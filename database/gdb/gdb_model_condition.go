@@ -32,6 +32,17 @@ func (m *Model) Where(where interface{}, args ...interface{}) *Model {
 	return model
 }
 
+// Having sets the having statement for the model.
+// The parameters of this function usage are as the same as function Where.
+// See Where.
+func (m *Model) Having(having interface{}, args ...interface{}) *Model {
+	model := m.getModel()
+	model.having = []interface{}{
+		having, args,
+	}
+	return model
+}
+
 // WherePri does the same logic as Model.Where except that if the parameter <where>
 // is a single condition like int/string/float/slice, it treats the condition as the primary
 // key value. That is, if primary key is "id" and given <where> parameter as "123", the
@@ -145,19 +156,19 @@ func (m *Model) ForPage(page, limit int) *Model {
 }
 
 // getAll does the query from database.
-func (m *Model) getAll(query string, args ...interface{}) (result Result, err error) {
+func (m *Model) getAll(sql string, args ...interface{}) (result Result, err error) {
 	cacheKey := ""
 	// Retrieve from cache.
 	if m.cacheEnabled {
 		cacheKey = m.cacheName
 		if len(cacheKey) == 0 {
-			cacheKey = query + "/" + gconv.String(args)
+			cacheKey = sql + "/" + gconv.String(args)
 		}
 		if v := m.db.GetCache().Get(cacheKey); v != nil {
 			return v.(Result), nil
 		}
 	}
-	result, err = m.db.DoGetAll(m.getLink(false), query, m.mergeArguments(args)...)
+	result, err = m.db.DoGetAll(m.getLink(false), sql, m.mergeArguments(args)...)
 	// Cache the result.
 	if len(cacheKey) > 0 && err == nil {
 		if m.cacheDuration < 0 {

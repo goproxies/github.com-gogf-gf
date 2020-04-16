@@ -35,18 +35,11 @@ type StorageFile struct {
 }
 
 var (
-	DefaultStorageFilePath          = gfile.Join(gfile.TempDir(), "gsessions")
+	DefaultStorageFilePath          = gfile.TempDir("gsessions")
 	DefaultStorageFileCryptoKey     = []byte("Session storage file crypto key!")
 	DefaultStorageFileCryptoEnabled = false
 	DefaultStorageFileLoopInterval  = 10 * time.Second
 )
-
-func init() {
-	tmpPath := "/tmp"
-	if gfile.Exists(tmpPath) && gfile.IsWritable(tmpPath) {
-		DefaultStorageFilePath = gfile.Join(tmpPath, "gsessions")
-	}
-}
 
 // NewStorageFile creates and returns a file storage object for session.
 func NewStorageFile(path ...string) *StorageFile {
@@ -206,7 +199,9 @@ func (s *StorageFile) SetSession(id string, data *gmap.StrAnyMap, ttl time.Durat
 			return err
 		}
 	}
-	file, err := gfile.OpenWithFlag(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	file, err := gfile.OpenWithFlagPerm(
+		path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm,
+	)
 	if err != nil {
 		return err
 	}

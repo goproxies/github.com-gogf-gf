@@ -11,6 +11,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/gogf/gf/container/gvar"
 	"github.com/gogf/gf/internal/intlog"
 	"time"
 
@@ -18,7 +19,6 @@ import (
 
 	"github.com/gogf/gf/container/gmap"
 	"github.com/gogf/gf/container/gtype"
-	"github.com/gogf/gf/container/gvar"
 	"github.com/gogf/gf/os/gcache"
 	"github.com/gogf/gf/util/grand"
 )
@@ -30,29 +30,29 @@ type DB interface {
 	Open(config *ConfigNode) (*sql.DB, error)
 
 	// Query APIs.
-	Query(query string, args ...interface{}) (*sql.Rows, error)
+	Query(sql string, args ...interface{}) (*sql.Rows, error)
 	Exec(sql string, args ...interface{}) (sql.Result, error)
 	Prepare(sql string, execOnMaster ...bool) (*sql.Stmt, error)
 
 	// Internal APIs for CURD, which can be overwrote for custom CURD implements.
-	DoQuery(link Link, query string, args ...interface{}) (rows *sql.Rows, err error)
-	DoGetAll(link Link, query string, args ...interface{}) (result Result, err error)
-	DoExec(link Link, query string, args ...interface{}) (result sql.Result, err error)
-	DoPrepare(link Link, query string) (*sql.Stmt, error)
+	DoQuery(link Link, sql string, args ...interface{}) (rows *sql.Rows, err error)
+	DoGetAll(link Link, sql string, args ...interface{}) (result Result, err error)
+	DoExec(link Link, sql string, args ...interface{}) (result sql.Result, err error)
+	DoPrepare(link Link, sql string) (*sql.Stmt, error)
 	DoInsert(link Link, table string, data interface{}, option int, batch ...int) (result sql.Result, err error)
 	DoBatchInsert(link Link, table string, list interface{}, option int, batch ...int) (result sql.Result, err error)
 	DoUpdate(link Link, table string, data interface{}, condition string, args ...interface{}) (result sql.Result, err error)
 	DoDelete(link Link, table string, condition string, args ...interface{}) (result sql.Result, err error)
 
 	// Query APIs for convenience purpose.
-	GetAll(query string, args ...interface{}) (Result, error)
-	GetOne(query string, args ...interface{}) (Record, error)
-	GetValue(query string, args ...interface{}) (Value, error)
-	GetArray(query string, args ...interface{}) ([]Value, error)
-	GetCount(query string, args ...interface{}) (int, error)
-	GetStruct(objPointer interface{}, query string, args ...interface{}) error
-	GetStructs(objPointerSlice interface{}, query string, args ...interface{}) error
-	GetScan(objPointer interface{}, query string, args ...interface{}) error
+	GetAll(sql string, args ...interface{}) (Result, error)
+	GetOne(sql string, args ...interface{}) (Record, error)
+	GetValue(sql string, args ...interface{}) (Value, error)
+	GetArray(sql string, args ...interface{}) ([]Value, error)
+	GetCount(sql string, args ...interface{}) (int, error)
+	GetStruct(objPointer interface{}, sql string, args ...interface{}) error
+	GetStructs(objPointerSlice interface{}, sql string, args ...interface{}) error
+	GetScan(objPointer interface{}, sql string, args ...interface{}) error
 
 	// Master/Slave specification support.
 	Master() (*sql.DB, error)
@@ -78,8 +78,8 @@ type DB interface {
 	Delete(table string, condition interface{}, args ...interface{}) (sql.Result, error)
 
 	// Model creation.
-	From(tables string) *Model
-	Table(tables string) *Model
+	Table(table ...string) *Model
+	Model(table ...string) *Model
 	Schema(schema string) *Schema
 
 	// Configuration methods.
@@ -89,6 +89,9 @@ type DB interface {
 	SetSchema(schema string)
 	GetSchema() string
 	GetPrefix() string
+	GetGroup() string
+	SetDryRun(dryrun bool)
+	GetDryRun() bool
 	SetLogger(logger *glog.Logger)
 	GetLogger() *glog.Logger
 	SetMaxIdleConnCount(n int)
@@ -107,9 +110,9 @@ type DB interface {
 
 	// HandleSqlBeforeCommit is a hook function, which deals with the sql string before
 	// it's committed to underlying driver. The parameter <link> specifies the current
-	// database connection operation object. You can modify the sql string <query> and its
+	// database connection operation object. You can modify the sql string <sql> and its
 	// arguments <args> as you wish before they're committed to driver.
-	HandleSqlBeforeCommit(link Link, query string, args []interface{}) (string, []interface{})
+	HandleSqlBeforeCommit(link Link, sql string, args []interface{}) (string, []interface{})
 
 	// Internal methods.
 	filterFields(schema, table string, data map[string]interface{}) map[string]interface{}
@@ -124,6 +127,7 @@ type Core struct {
 	debug            *gtype.Bool   // Enable debug mode for the database.
 	cache            *gcache.Cache // Cache manager.
 	schema           *gtype.String // Custom schema for this object.
+	dryrun           *gtype.Bool   // Dry run.
 	prefix           string        // Table prefix.
 	logger           *glog.Logger  // Logger.
 	maxIdleConnCount int           // Max idle connection count.
@@ -161,26 +165,28 @@ type TableField struct {
 
 // Link is a common database function wrapper interface.
 type Link interface {
-	Query(query string, args ...interface{}) (*sql.Rows, error)
+	Query(sql string, args ...interface{}) (*sql.Rows, error)
 	Exec(sql string, args ...interface{}) (sql.Result, error)
 	Prepare(sql string) (*sql.Stmt, error)
 }
 
-// Value is the field value type.
-type Value = *gvar.Var
+type (
+	// Value is the field value type.
+	Value = *gvar.Var
 
-// Record is the row record of the table.
-type Record map[string]Value
+	// Record is the row record of the table.
+	Record map[string]Value
 
-// Result is the row record array.
-type Result []Record
+	// Result is the row record array.
+	Result []Record
 
-// Map is alias of map[string]interface{},
-// which is the most common usage map type.
-type Map = map[string]interface{}
+	// Map is alias of map[string]interface{},
+	// which is the most common usage map type.
+	Map = map[string]interface{}
 
-// List is type of map array.
-type List = []Map
+	// List is type of map array.
+	List = []Map
+)
 
 const (
 	gINSERT_OPTION_DEFAULT       = 0
@@ -193,6 +199,8 @@ const (
 )
 
 var (
+	// ErrNoRows is alias of sql.ErrNoRows.
+	ErrNoRows = sql.ErrNoRows
 	// instances is the management map for instances.
 	instances = gmap.NewStrAnyMap(true)
 	// driverMap manages all custom registered driver.
@@ -232,6 +240,7 @@ func New(name ...string) (db DB, err error) {
 				debug:            gtype.NewBool(),
 				cache:            gcache.New(),
 				schema:           gtype.NewString(),
+				dryrun:           gtype.NewBool(),
 				logger:           glog.New(),
 				prefix:           node.Prefix,
 				maxIdleConnCount: gDEFAULT_CONN_MAX_IDLE_COUNT,
@@ -398,6 +407,9 @@ func (c *Core) getSqlDb(master bool, schema ...string) (sqlDb *sql.DB, err error
 	}
 	if node.Debug {
 		c.DB.SetDebug(node.Debug)
+	}
+	if node.Debug {
+		c.DB.SetDryRun(node.DryRun)
 	}
 	return
 }

@@ -9,9 +9,11 @@ package gdb_test
 import (
 	"database/sql"
 	"fmt"
+	"github.com/gogf/gf/container/garray"
 	"github.com/gogf/gf/container/gmap"
 	"github.com/gogf/gf/util/gutil"
 	"testing"
+	"time"
 
 	"github.com/gogf/gf/database/gdb"
 
@@ -24,7 +26,7 @@ func Test_Model_Insert(t *testing.T) {
 	table := createTable()
 	defer dropTable(table)
 	gtest.C(t, func(t *gtest.T) {
-		user := db.From(table)
+		user := db.Table(table)
 		result, err := user.Filter().Data(g.Map{
 			"id":          1,
 			"uid":         1,
@@ -336,7 +338,7 @@ func Test_Model_Safe(t *testing.T) {
 		t.Assert(err, nil)
 		t.Assert(len(all), 2)
 
-		all, err = md2.ForPage(1, 10).All()
+		all, err = md2.Page(1, 10).All()
 		t.Assert(err, nil)
 		t.Assert(len(all), 2)
 	})
@@ -360,7 +362,7 @@ func Test_Model_Safe(t *testing.T) {
 		t.Assert(all[0]["id"].Int(), 1)
 		t.Assert(all[1]["id"].Int(), 3)
 
-		all, err = md2.ForPage(1, 10).All()
+		all, err = md2.Page(1, 10).All()
 		t.Assert(err, nil)
 		t.Assert(len(all), 2)
 
@@ -376,7 +378,7 @@ func Test_Model_Safe(t *testing.T) {
 		t.Assert(all[1]["id"].Int(), 5)
 		t.Assert(all[2]["id"].Int(), 6)
 
-		all, err = md3.ForPage(1, 10).All()
+		all, err = md3.Page(1, 10).All()
 		t.Assert(err, nil)
 		t.Assert(len(all), 3)
 	})
@@ -937,14 +939,47 @@ func Test_Model_GroupBy(t *testing.T) {
 }
 
 func Test_Model_Data(t *testing.T) {
-	table := createInitTable()
-	defer dropTable(table)
-
 	gtest.C(t, func(t *gtest.T) {
+		table := createInitTable()
+		defer dropTable(table)
 		result, err := db.Table(table).Data("nickname=?", "test").Where("id=?", 3).Update()
 		t.Assert(err, nil)
 		n, _ := result.RowsAffected()
 		t.Assert(n, 1)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		table := createTable()
+		defer dropTable(table)
+		users := make([]g.MapStrAny, 0)
+		for i := 1; i <= 10; i++ {
+			users = append(users, g.MapStrAny{
+				"id":       i,
+				"passport": fmt.Sprintf(`passport_%d`, i),
+				"password": fmt.Sprintf(`password_%d`, i),
+				"nickname": fmt.Sprintf(`nickname_%d`, i),
+			})
+		}
+		result, err := db.Table(table).Data(users).Batch(2).Insert()
+		t.Assert(err, nil)
+		n, _ := result.RowsAffected()
+		t.Assert(n, 10)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		table := createTable()
+		defer dropTable(table)
+		users := garray.New()
+		for i := 1; i <= 10; i++ {
+			users.Append(g.MapStrAny{
+				"id":       i,
+				"passport": fmt.Sprintf(`passport_%d`, i),
+				"password": fmt.Sprintf(`password_%d`, i),
+				"nickname": fmt.Sprintf(`nickname_%d`, i),
+			})
+		}
+		result, err := db.Table(table).Data(users).Batch(2).Insert()
+		t.Assert(err, nil)
+		n, _ := result.RowsAffected()
+		t.Assert(n, 10)
 	})
 }
 
@@ -1229,6 +1264,23 @@ func Test_Model_Where_ISNULL_2(t *testing.T) {
 		t.Assert(result[0]["id"].Int(), 1)
 	})
 }
+
+func Test_Model_Where_GTime(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		result, err := db.Table(table).Where("create_time>?", gtime.NewFromStr("2010-09-01")).All()
+		t.Assert(err, nil)
+		t.Assert(len(result), 10)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		result, err := db.Table(table).Where("create_time>?", *gtime.NewFromStr("2010-09-01")).All()
+		t.Assert(err, nil)
+		t.Assert(len(result), 10)
+	})
+}
+
 func Test_Model_WherePri(t *testing.T) {
 	table := createInitTable()
 	defer dropTable(table)
@@ -1519,7 +1571,7 @@ func Test_Model_Offset(t *testing.T) {
 	})
 }
 
-func Test_Model_ForPage(t *testing.T) {
+func Test_Model_Page(t *testing.T) {
 	table := createInitTable()
 	defer dropTable(table)
 	gtest.C(t, func(t *gtest.T) {
@@ -1528,6 +1580,15 @@ func Test_Model_ForPage(t *testing.T) {
 		t.Assert(len(result), 3)
 		t.Assert(result[0]["id"], 7)
 		t.Assert(result[1]["id"], 8)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		model := db.Table(table).Safe().Order("id")
+		all, err := model.Page(3, 3).All()
+		count, err := model.Count()
+		t.Assert(err, nil)
+		t.Assert(len(all), 3)
+		t.Assert(all[0]["id"], "7")
+		t.Assert(count, SIZE)
 	})
 }
 
@@ -2000,5 +2061,182 @@ func Test_Model_Schema2(t *testing.T) {
 		v, err = db.Schema(SCHEMA2).Table(table).Value("nickname", "id=?", i)
 		t.Assert(err, nil)
 		t.Assert(v.String(), "")
+	})
+}
+
+func Test_Model_FieldsExStruct(t *testing.T) {
+	table := createTable()
+	defer dropTable(table)
+	gtest.C(t, func(t *gtest.T) {
+		type User struct {
+			Id       int    `orm:"id"       json:"id"`
+			Passport string `orm:"password" json:"pass_port"`
+			Password string `orm:"password" json:"password"`
+			NickName string `orm:"nickname" json:"nick__name"`
+		}
+		user := &User{
+			Id:       1,
+			Passport: "111",
+			Password: "222",
+			NickName: "333",
+		}
+		r, err := db.Table(table).FieldsEx("create_time, password").OmitEmpty().Data(user).Insert()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 1)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		type User struct {
+			Id       int    `orm:"id"       json:"id"`
+			Passport string `orm:"password" json:"pass_port"`
+			Password string `orm:"password" json:"password"`
+			NickName string `orm:"nickname" json:"nick__name"`
+		}
+		users := make([]*User, 0)
+		for i := 100; i < 110; i++ {
+			users = append(users, &User{
+				Id:       i,
+				Passport: fmt.Sprintf(`passport_%d`, i),
+				Password: fmt.Sprintf(`password_%d`, i),
+				NickName: fmt.Sprintf(`nickname_%d`, i),
+			})
+		}
+		r, err := db.Table(table).FieldsEx("create_time, password").
+			OmitEmpty().
+			Batch(2).
+			Data(users).
+			Insert()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 10)
+	})
+}
+
+func Test_Model_OmitEmpty_Time(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+	gtest.C(t, func(t *gtest.T) {
+		type User struct {
+			Id       int       `orm:"id"       json:"id"`
+			Passport string    `orm:"password" json:"pass_port"`
+			Password string    `orm:"password" json:"password"`
+			Time     time.Time `orm:"create_time" `
+		}
+		user := &User{
+			Id:       1,
+			Passport: "111",
+			Password: "222",
+			Time:     time.Time{},
+		}
+		r, err := db.Table(table).OmitEmpty().Data(user).WherePri(1).Update()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 1)
+	})
+}
+
+func Test_Result_Chunk(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+	gtest.C(t, func(t *gtest.T) {
+		r, err := db.Table(table).Order("id asc").All()
+		t.Assert(err, nil)
+		chunks := r.Chunk(3)
+		t.Assert(len(chunks), 4)
+		t.Assert(chunks[0][0]["id"].Int(), 1)
+		t.Assert(chunks[1][0]["id"].Int(), 4)
+		t.Assert(chunks[2][0]["id"].Int(), 7)
+		t.Assert(chunks[3][0]["id"].Int(), 10)
+	})
+}
+
+func Test_Model_DryRun(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+	db.SetDryRun(true)
+	defer db.SetDryRun(false)
+
+	gtest.C(t, func(t *gtest.T) {
+		one, err := db.Table(table).FindOne(1)
+		t.Assert(err, nil)
+		t.Assert(one["id"], 1)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		r, err := db.Table(table).Data("passport", "port_1").WherePri(1).Update()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 0)
+	})
+}
+
+func Test_Model_Cache(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		one, err := db.Table(table).Cache(time.Second, "test1").FindOne(1)
+		t.Assert(err, nil)
+		t.Assert(one["passport"], "user_1")
+
+		r, err := db.Table(table).Data("passport", "user_100").WherePri(1).Update()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 1)
+
+		one, err = db.Table(table).Cache(time.Second, "test1").FindOne(1)
+		t.Assert(err, nil)
+		t.Assert(one["passport"], "user_1")
+
+		time.Sleep(time.Second * 2)
+
+		one, err = db.Table(table).Cache(time.Second, "test1").FindOne(1)
+		t.Assert(err, nil)
+		t.Assert(one["passport"], "user_100")
+	})
+	gtest.C(t, func(t *gtest.T) {
+		one, err := db.Table(table).Cache(time.Second, "test2").FindOne(2)
+		t.Assert(err, nil)
+		t.Assert(one["passport"], "user_2")
+
+		r, err := db.Table(table).Data("passport", "user_200").Cache(-1, "test2").WherePri(2).Update()
+		t.Assert(err, nil)
+		n, err := r.RowsAffected()
+		t.Assert(err, nil)
+		t.Assert(n, 1)
+
+		one, err = db.Table(table).Cache(time.Second, "test2").FindOne(2)
+		t.Assert(err, nil)
+		t.Assert(one["passport"], "user_200")
+	})
+}
+
+func Test_Model_Having(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		all, err := db.Table(table).Where("id > 1").Having("id > 8").All()
+		t.Assert(err, nil)
+		t.Assert(len(all), 2)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		all, err := db.Table(table).Where("id > 1").Having("id > ?", 8).All()
+		t.Assert(err, nil)
+		t.Assert(len(all), 2)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		all, err := db.Table(table).Where("id > ?", 1).Having("id > ?", 8).All()
+		t.Assert(err, nil)
+		t.Assert(len(all), 2)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		all, err := db.Table(table).Where("id > ?", 1).Having("id", 8).All()
+		t.Assert(err, nil)
+		t.Assert(len(all), 1)
 	})
 }

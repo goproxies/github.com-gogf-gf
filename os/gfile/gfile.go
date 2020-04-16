@@ -8,14 +8,10 @@
 package gfile
 
 import (
-	"bytes"
-	"errors"
 	"github.com/gogf/gf/text/gstr"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -46,7 +42,7 @@ var (
 
 func init() {
 	// Initialize internal package variable: tempDir.
-	if !Exists(tempDir) {
+	if Separator == "/" && !Exists(tempDir) {
 		tempDir = os.TempDir()
 	}
 	// Initialize internal package variable: selfPath.
@@ -177,11 +173,12 @@ func Stat(path string) (os.FileInfo, error) {
 }
 
 // Move renames (moves) <src> to <dst> path.
+// If <dst> already exists and is not a directory, it'll be replaced.
 func Move(src string, dst string) error {
 	return os.Rename(src, dst)
 }
 
-// Alias of Move.
+// Rename is alias of Move.
 // See Move.
 func Rename(src string, dst string) error {
 	return Move(src, dst)
@@ -385,52 +382,14 @@ func ExtName(path string) string {
 	return strings.TrimLeft(Ext(path), ".")
 }
 
-// Home returns absolute path of current user's home directory.
-func Home() (string, error) {
-	u, err := user.Current()
-	if nil == err {
-		return u.HomeDir, nil
+// TempDir retrieves and returns the temporary directory of current system.
+// It return "/tmp" is current in *nix system, or else it returns os.TempDir().
+// The optional parameter <names> specifies the its sub-folders/sub-files,
+// which will be joined with current system separator and returned with the path.
+func TempDir(names ...string) string {
+	path := tempDir
+	for _, name := range names {
+		path += Separator + name
 	}
-	if "windows" == runtime.GOOS {
-		return homeWindows()
-	}
-	return homeUnix()
-}
-
-func homeUnix() (string, error) {
-	if home := os.Getenv("HOME"); home != "" {
-		return home, nil
-	}
-	var stdout bytes.Buffer
-	cmd := exec.Command("sh", "-c", "eval echo ~$USER")
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		return "", err
-	}
-
-	result := strings.TrimSpace(stdout.String())
-	if result == "" {
-		return "", errors.New("blank output when reading home directory")
-	}
-
-	return result, nil
-}
-
-func homeWindows() (string, error) {
-	drive := os.Getenv("HOMEDRIVE")
-	path := os.Getenv("HOMEPATH")
-	home := drive + path
-	if drive == "" || path == "" {
-		home = os.Getenv("USERPROFILE")
-	}
-	if home == "" {
-		return "", errors.New("HOMEDRIVE, HOMEPATH, and USERPROFILE are blank")
-	}
-
-	return home, nil
-}
-
-// See os.TempDir().
-func TempDir() string {
-	return tempDir
+	return path
 }

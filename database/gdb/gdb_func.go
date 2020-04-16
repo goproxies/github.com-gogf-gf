@@ -8,7 +8,6 @@ package gdb
 
 import (
 	"bytes"
-	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/gogf/gf/internal/empty"
@@ -39,6 +38,11 @@ type apiIterator interface {
 // apiInterfaces is the type assert api for Interfaces.
 type apiInterfaces interface {
 	Interfaces() []interface{}
+}
+
+// apiMapStrAny is the interface support for converting struct parameter to map.
+type apiMapStrAny interface {
+	MapStrAny() map[string]interface{}
 }
 
 const (
@@ -99,21 +103,27 @@ func DataToMapDeep(obj interface{}) map[string]interface{} {
 	return data
 }
 
-// QuotePrefixTableName adds prefix string and quote chars for the table. It handles table string like:
-// "user", "user u", "user,user_detail", "user u, user_detail ut", "user as u, user_detail as ut", "user.user u".
+// doHandleTableName adds prefix string and quote chars for the table. It handles table string like:
+// "user", "user u", "user,user_detail", "user u, user_detail ut", "user as u, user_detail as ut",
+// "user.user u", "`user`.`user` u".
 //
 // Note that, this will automatically checks the table prefix whether already added, if true it does
 // nothing to the table name, or else adds the prefix to the table name.
 func doHandleTableName(table, prefix, charLeft, charRight string) string {
-	index := 0
-	array1 := gstr.SplitAndTrim(table, ",")
+	var (
+		index  = 0
+		chars  = charLeft + charRight
+		array1 = gstr.SplitAndTrim(table, ",")
+	)
 	for k1, v1 := range array1 {
 		array2 := gstr.SplitAndTrim(v1, " ")
 		// Trim the security chars.
-		array2[0] = gstr.TrimLeftStr(array2[0], charLeft)
-		array2[0] = gstr.TrimRightStr(array2[0], charRight)
+		array2[0] = gstr.Trim(array2[0], chars)
 		// Check whether it has database name.
 		array3 := gstr.Split(gstr.Trim(array2[0]), ".")
+		for k, v := range array3 {
+			array3[k] = gstr.Trim(v, chars)
+		}
 		index = len(array3) - 1
 		// If the table name already has the prefix, skips the prefix adding.
 		if len(array3[index]) <= len(prefix) || array3[index][:len(prefix)] != prefix {
@@ -137,8 +147,13 @@ func doQuoteWord(s, charLeft, charRight string) string {
 }
 
 // doQuoteString quotes string with quote chars. It handles strings like:
-// "user", "user u", "user,user_detail", "user u, user_detail ut",
-// "user.user u, user.user_detail ut", "u.id asc".
+// "user",
+// "user u",
+// "user,user_detail",
+// "user u, user_detail ut",
+// "user.user u, user.user_detail ut",
+// "u.id, u.name, u.age",
+// "u.id asc".
 func doQuoteString(s, charLeft, charRight string) string {
 	array1 := gstr.SplitAndTrim(s, ",")
 	for k1, v1 := range array1 {
@@ -191,8 +206,13 @@ func GetPrimaryKey(pointer interface{}) string {
 
 // GetPrimaryKeyCondition returns a new where condition by primary field name.
 // The optional parameter <where> is like follows:
-// 123, []int{1, 2, 3}, "john", []string{"john", "smith"}
-// g.Map{"id": g.Slice{1,2,3}}, g.Map{"id": 1, "name": "john"}, etc.
+// 123
+// []int{1, 2, 3}
+// "john"
+// []string{"john", "smith"}
+// g.Map{"id": g.Slice{1,2,3}}
+// g.Map{"id": 1, "name": "john"}
+// etc.
 //
 // Note that it returns the given <where> parameter directly if there's the <primary> is empty.
 func GetPrimaryKeyCondition(primary string, where ...interface{}) (newWhereCondition []interface{}) {
@@ -222,11 +242,11 @@ func GetPrimaryKeyCondition(primary string, where ...interface{}) (newWhereCondi
 	return where
 }
 
-// formatQuery formats the query string and its arguments before executing.
+// formatSql formats the sql string and its arguments before executing.
 // The internal handleArguments function might be called twice during the SQL procedure,
 // but do not worry about it, it's safe and efficient.
-func formatQuery(query string, args []interface{}) (newQuery string, newArgs []interface{}) {
-	return handleArguments(query, args)
+func formatSql(sql string, args []interface{}) (newQuery string, newArgs []interface{}) {
+	return handleArguments(sql, args)
 }
 
 // formatWhere formats where statement and its arguments.
@@ -384,8 +404,8 @@ func formatWhereKeyValue(db DB, buffer *bytes.Buffer, newArgs []interface{}, key
 
 // handleArguments is a nice function which handles the query and its arguments before committing to
 // underlying driver.
-func handleArguments(query string, args []interface{}) (newQuery string, newArgs []interface{}) {
-	newQuery = query
+func handleArguments(sql string, args []interface{}) (newSql string, newArgs []interface{}) {
+	newSql = sql
 	// Handles the slice arguments.
 	if len(args) > 0 {
 		for index, arg := range args {
@@ -409,12 +429,12 @@ func handleArguments(query string, args []interface{}) (newQuery string, newArgs
 				// It the '?' holder count equals the length of the slice,
 				// it does not implement the arguments splitting logic.
 				// Eg: db.Query("SELECT ?+?", g.Slice{1, 2})
-				if len(args) == 1 && gstr.Count(newQuery, "?") == rv.Len() {
+				if len(args) == 1 && gstr.Count(newSql, "?") == rv.Len() {
 					break
 				}
 				// counter is used to finding the inserting position for the '?' holder.
 				counter := 0
-				newQuery, _ = gregex.ReplaceStringFunc(`\?`, newQuery, func(s string) string {
+				newSql, _ = gregex.ReplaceStringFunc(`\?`, newSql, func(s string) string {
 					counter++
 					if counter == index+1 {
 						return "?" + strings.Repeat(",?", rv.Len()-1)
@@ -433,11 +453,23 @@ func handleArguments(query string, args []interface{}) (newQuery string, newArgs
 					newArgs = append(newArgs, arg)
 					continue
 				}
-				// It converts the struct to string in default
-				// if it implements the String interface.
-				if v, ok := arg.(apiString); ok {
+				switch v := arg.(type) {
+				case time.Time, *time.Time:
+					newArgs = append(newArgs, arg)
+					continue
+
+				// Special handling for gtime.Time.
+				case gtime.Time:
 					newArgs = append(newArgs, v.String())
 					continue
+
+				default:
+					// It converts the struct to string in default
+					// if it implements the String interface.
+					if v, ok := arg.(apiString); ok {
+						newArgs = append(newArgs, v.String())
+						continue
+					}
 				}
 				newArgs = append(newArgs, arg)
 
@@ -450,19 +482,19 @@ func handleArguments(query string, args []interface{}) (newQuery string, newArgs
 }
 
 // formatError customizes and returns the SQL error.
-func formatError(err error, query string, args ...interface{}) error {
-	if err != nil && err != sql.ErrNoRows {
-		return errors.New(fmt.Sprintf("%s, %s\n", err.Error(), bindArgsToQuery(query, args)))
+func formatError(err error, sql string, args ...interface{}) error {
+	if err != nil && err != ErrNoRows {
+		return errors.New(fmt.Sprintf("%s, %s\n", err.Error(), FormatSqlWithArgs(sql, args)))
 	}
 	return err
 }
 
-// bindArgsToQuery binds the arguments to the query string and returns a complete
+// FormatSqlWithArgs binds the arguments to the sql string and returns a complete
 // sql string, just for debugging.
-func bindArgsToQuery(query string, args []interface{}) string {
+func FormatSqlWithArgs(sql string, args []interface{}) string {
 	index := -1
 	newQuery, _ := gregex.ReplaceStringFunc(
-		`(\?|:\d+|\$\d+|@p\d+)`, query, func(s string) string {
+		`(\?|:\d+|\$\d+|@p\d+)`, sql, func(s string) string {
 			index++
 			if len(args) > index {
 				if args[index] == nil {

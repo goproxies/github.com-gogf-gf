@@ -21,8 +21,8 @@ import (
 )
 
 func Test_Params_File_Single(t *testing.T) {
-	dstDirPath := gfile.Join(gfile.TempDir(), gtime.TimestampNanoStr())
-	p := ports.PopRand()
+	dstDirPath := gfile.TempDir(gtime.TimestampNanoStr())
+	p, _ := ports.PopRand()
 	s := g.Server(p)
 	s.BindHandler("/upload/single", func(r *ghttp.Request) {
 		file := r.GetUploadFile("file")
@@ -75,8 +75,8 @@ func Test_Params_File_Single(t *testing.T) {
 }
 
 func Test_Params_File_CustomName(t *testing.T) {
-	dstDirPath := gfile.Join(gfile.TempDir(), gtime.TimestampNanoStr())
-	p := ports.PopRand()
+	dstDirPath := gfile.TempDir(gtime.TimestampNanoStr())
+	p, _ := ports.PopRand()
 	s := g.Server(p)
 	s.BindHandler("/upload/single", func(r *ghttp.Request) {
 		file := r.GetUploadFile("file")
@@ -112,8 +112,8 @@ func Test_Params_File_CustomName(t *testing.T) {
 }
 
 func Test_Params_File_Batch(t *testing.T) {
-	dstDirPath := gfile.Join(gfile.TempDir(), gtime.TimestampNanoStr())
-	p := ports.PopRand()
+	dstDirPath := gfile.TempDir(gtime.TimestampNanoStr())
+	p, _ := ports.PopRand()
 	s := g.Server(p)
 	s.BindHandler("/upload/batch", func(r *ghttp.Request) {
 		files := r.GetUploadFiles("file")

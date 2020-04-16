@@ -234,7 +234,7 @@ func GetServer(name ...interface{}) *Server {
 	if s := serverMapping.Get(serverName); s != nil {
 		return s.(*Server)
 	}
-	c := defaultServerConfig
+	c := Config()
 	s := &Server{
 		name:             serverName,
 		plugins:          make([]Plugin, 0),
@@ -306,7 +306,7 @@ func (s *Server) Start() error {
 
 	// Default HTTP handler.
 	if s.config.Handler == nil {
-		s.config.Handler = http.HandlerFunc(s.defaultHandler)
+		s.config.Handler = s
 	}
 
 	// Install external plugins.

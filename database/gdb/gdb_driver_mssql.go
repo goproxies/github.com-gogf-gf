@@ -13,6 +13,7 @@ package gdb
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/gogf/gf/internal/intlog"
 	"github.com/gogf/gf/text/gstr"
@@ -60,10 +61,10 @@ func (d *DriverMssql) GetChars() (charLeft string, charRight string) {
 }
 
 // HandleSqlBeforeCommit deals with the sql string before commits it to underlying sql driver.
-func (d *DriverMssql) HandleSqlBeforeCommit(link Link, query string, args []interface{}) (string, []interface{}) {
+func (d *DriverMssql) HandleSqlBeforeCommit(link Link, sql string, args []interface{}) (string, []interface{}) {
 	var index int
 	// Convert place holder char '?' to string "@px".
-	str, _ := gregex.ReplaceStringFunc("\\?", query, func(s string) string {
+	str, _ := gregex.ReplaceStringFunc("\\?", sql, func(s string) string {
 		index++
 		return fmt.Sprintf("@p%d", index)
 	})
@@ -71,6 +72,8 @@ func (d *DriverMssql) HandleSqlBeforeCommit(link Link, query string, args []inte
 	return d.parseSql(str), args
 }
 
+// parseSql does some replacement of the sql before commits it to underlying driver,
+// for support of microsoft sql server.
 func (d *DriverMssql) parseSql(sql string) string {
 	// SELECT * FROM USER WHERE ID=1 LIMIT 1
 	if m, _ := gregex.MatchString(`^SELECT(.+)LIMIT 1$`, sql); len(m) > 1 {
@@ -91,22 +94,20 @@ func (d *DriverMssql) parseSql(sql string) string {
 	index++
 	switch keyword {
 	case "SELECT":
-		// 不含LIMIT关键字则不处理
+		// LIMIT statement checks.
 		if len(res) < 2 ||
 			(strings.HasPrefix(res[index][0], "LIMIT") == false &&
 				strings.HasPrefix(res[index][0], "limit") == false) {
 			break
 		}
-		// 不含LIMIT则不处理
 		if gregex.IsMatchString("((?i)SELECT)(.+)((?i)LIMIT)", sql) == false {
 			break
 		}
-		// 判断SQL中是否含有order by
+		// ORDER BY statement checks.
 		selectStr := ""
 		orderStr := ""
 		haveOrder := gregex.IsMatchString("((?i)SELECT)(.+)((?i)ORDER BY)", sql)
 		if haveOrder {
-			// 取order by 前面的字符串
 			queryExpr, _ := gregex.MatchString("((?i)SELECT)(.+)((?i)ORDER BY)", sql)
 			if len(queryExpr) != 4 ||
 				strings.EqualFold(queryExpr[1], "SELECT") == false ||
@@ -114,8 +115,6 @@ func (d *DriverMssql) parseSql(sql string) string {
 				break
 			}
 			selectStr = queryExpr[2]
-
-			// 取order by表达式的值
 			orderExpr, _ := gregex.MatchString("((?i)ORDER BY)(.+)((?i)LIMIT)", sql)
 			if len(orderExpr) != 4 ||
 				strings.EqualFold(orderExpr[1], "ORDER BY") == false ||
@@ -132,8 +131,6 @@ func (d *DriverMssql) parseSql(sql string) string {
 			}
 			selectStr = queryExpr[2]
 		}
-
-		// 取limit后面的取值范围
 		first, limit := 0, 0
 		for i := 1; i < len(res[index]); i++ {
 			if len(strings.TrimSpace(res[index][i])) == 0 {
@@ -147,23 +144,20 @@ func (d *DriverMssql) parseSql(sql string) string {
 				break
 			}
 		}
-
 		if haveOrder {
 			sql = fmt.Sprintf(
 				"SELECT * FROM "+
 					"(SELECT ROW_NUMBER() OVER (ORDER BY %s) as ROWNUMBER_, %s ) as TMP_ "+
 					"WHERE TMP_.ROWNUMBER_ > %d AND TMP_.ROWNUMBER_ <= %d",
-				orderStr, selectStr, first, limit,
+				orderStr, selectStr, first, first+limit,
 			)
 		} else {
 			if first == 0 {
 				first = limit
-			} else {
-				first = limit - first
 			}
 			sql = fmt.Sprintf(
 				"SELECT * FROM (SELECT TOP %d * FROM (SELECT TOP %d %s) as TMP1_ ) as TMP2_ ",
-				first, limit, selectStr,
+				limit, first+limit, selectStr,
 			)
 		}
 	default:
@@ -194,9 +188,10 @@ func (d *DriverMssql) Tables(schema ...string) (tables []string, err error) {
 
 // TableFields retrieves and returns the fields information of specified table of current schema.
 func (d *DriverMssql) TableFields(table string, schema ...string) (fields map[string]*TableField, err error) {
-	table = gstr.Trim(table)
+	charL, charR := d.GetChars()
+	table = gstr.Trim(table, charL+charR)
 	if gstr.Contains(table, " ") {
-		panic("function TableFields supports only single table operations")
+		return nil, errors.New("function TableFields supports only single table operations")
 	}
 	checkSchema := d.DB.GetSchema()
 	if len(schema) > 0 && schema[0] != "" {
