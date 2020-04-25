@@ -11,16 +11,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/gogf/gf/encoding/gparser"
-	"github.com/gogf/gf/text/gregex"
-	"github.com/gogf/gf/text/gstr"
-	"github.com/gogf/gf/util/gconv"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/gogf/gf/encoding/gparser"
+	"github.com/gogf/gf/text/gregex"
+	"github.com/gogf/gf/text/gstr"
+	"github.com/gogf/gf/util/gconv"
 
 	"github.com/gogf/gf/os/gfile"
 )
@@ -156,7 +157,8 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 		if err = writer.Close(); err != nil {
 			return nil, err
 		}
-		if req, err = http.NewRequestWithContext(c.ctx, method, url, buffer); err != nil {
+
+		if req, err = http.NewRequest(method, url, buffer); err != nil {
 			return nil, err
 		} else {
 			req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -164,9 +166,7 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 	} else {
 		// Normal request.
 		paramBytes := []byte(param)
-		if req, err = http.NewRequestWithContext(
-			c.ctx, method, url, bytes.NewReader(paramBytes),
-		); err != nil {
+		if req, err = http.NewRequest(method, url, bytes.NewReader(paramBytes)); err != nil {
 			return nil, err
 		} else {
 			if v, ok := c.header["Content-Type"]; ok {
@@ -182,6 +182,10 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 				}
 			}
 		}
+	}
+	// Context.
+	if c.ctx != nil {
+		req = req.WithContext(c.ctx)
 	}
 	// Custom header.
 	if len(c.header) > 0 {
@@ -211,27 +215,28 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 	if len(c.authUser) > 0 {
 		req.SetBasicAuth(c.authUser, c.authPass)
 	}
-	// Sending request.
-	var r *http.Response
+	// do not return nil even if the request fails
+	resp = &ClientResponse{}
 	for {
-		if r, err = c.Do(req); err != nil {
+		if resp.Response, err = c.Do(req); err != nil {
 			if c.retryCount > 0 {
 				c.retryCount--
 				time.Sleep(c.retryInterval)
 			} else {
-				return nil, err
+				// we need a copy of the request when the request fails.
+				resp.request = req
+				return resp, err
 			}
 		} else {
+			resp.request = resp.Request
 			break
 		}
 	}
-	resp = &ClientResponse{
-		Response: r,
-	}
+
 	// Auto saving cookie content.
 	if c.browserMode {
 		now := time.Now()
-		for _, v := range r.Cookies() {
+		for _, v := range resp.Response.Cookies() {
 			if v.Expires.UnixNano() < now.UnixNano() {
 				delete(c.cookies, v.Name)
 			} else {
