@@ -1870,8 +1870,8 @@ func Test_Model_FieldsStr(t *testing.T) {
 	defer dropTable(table)
 
 	gtest.C(t, func(t *gtest.T) {
-		t.Assert(db.Table(table).FieldsStr(), "id,passport,password,nickname,create_time")
-		t.Assert(db.Table(table).FieldsStr("a."), "a.id,a.passport,a.password,a.nickname,a.create_time")
+		t.Assert(db.Table(table).FieldsStr(), "`id`,`passport`,`password`,`nickname`,`create_time`")
+		t.Assert(db.Table(table).FieldsStr("a."), "`a`.`id`,`a`.`passport`,`a`.`password`,`a`.`nickname`,`a`.`create_time`")
 	})
 }
 
@@ -1880,8 +1880,8 @@ func Test_Model_FieldsExStr(t *testing.T) {
 	defer dropTable(table)
 
 	gtest.C(t, func(t *gtest.T) {
-		t.Assert(db.Table(table).FieldsExStr("create_time,nickname"), "id,passport,password")
-		t.Assert(db.Table(table).FieldsExStr("create_time,nickname", "a."), "a.id,a.passport,a.password")
+		t.Assert(db.Table(table).FieldsExStr("create_time,nickname"), "`id`,`passport`,`password`")
+		t.Assert(db.Table(table).FieldsExStr("create_time,nickname", "a."), "`a`.`id`,`a`.`passport`,`a`.`password`")
 	})
 }
 
@@ -2295,5 +2295,60 @@ func Test_Model_Having(t *testing.T) {
 		all, err := db.Table(table).Where("id > ?", 1).Having("id", 8).All()
 		t.Assert(err, nil)
 		t.Assert(len(all), 1)
+	})
+}
+
+func Test_Model_Distinct(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		all, err := db.Table(table, "t").Fields("distinct t.id").Where("id > 1").Having("id > 8").All()
+		t.Assert(err, nil)
+		t.Assert(len(all), 2)
+	})
+}
+
+func Test_Model_Min_Max(t *testing.T) {
+	table := createInitTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		value, err := db.Table(table, "t").Fields("min(t.id)").Where("id > 1").Value()
+		t.Assert(err, nil)
+		t.Assert(value.Int(), 2)
+	})
+	gtest.C(t, func(t *gtest.T) {
+		value, err := db.Table(table, "t").Fields("max(t.id)").Where("id > 1").Value()
+		t.Assert(err, nil)
+		t.Assert(value.Int(), 10)
+	})
+}
+
+func Test_Model_NullField(t *testing.T) {
+	table := createTable()
+	defer dropTable(table)
+
+	gtest.C(t, func(t *gtest.T) {
+		type User struct {
+			Id       int
+			Passport *string
+		}
+		data := g.Map{
+			"id":       1,
+			"passport": nil,
+		}
+		result, err := db.Table(table).Data(data).Insert()
+		t.Assert(err, nil)
+		n, _ := result.RowsAffected()
+		t.Assert(n, 1)
+		one, err := db.Table(table).FindOne(1)
+		t.Assert(err, nil)
+
+		var user *User
+		err = one.Struct(&user)
+		t.Assert(err, nil)
+		t.Assert(user.Id, data["id"])
+		t.Assert(user.Passport, data["passport"])
 	})
 }
