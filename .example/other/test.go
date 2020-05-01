@@ -1,21 +1,29 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
-	"github.com/gogf/gf/frame/g"
-	"github.com/gogf/gf/net/ghttp"
+	"github.com/gogf/gf/encoding/gbase64"
+	"github.com/gogf/gf/util/gconv"
+	"github.com/gogf/gf/util/grand"
 )
 
+// bytesToHexString converts binary content to hex string content.
+func bytesToHexStr(b []byte) string {
+	dst := make([]byte, hex.EncodedLen(len(b)))
+	hex.Encode(dst, b)
+	return gconv.UnsafeBytesToStr(dst)
+}
+
 func main() {
-	s := g.Server()
-	s.Group("/", func(group *ghttp.RouterGroup) {
-		group.ALL("/", func(r *ghttp.Request) {
-			fmt.Println(r.GetBodyString())
-			fmt.Println(r.Header)
-			r.Response.Write(r.GetBodyString())
-			r.Response.Write(r.Header)
-		})
-	})
-	s.SetPort(8199)
-	s.Run()
+	b := make([]byte, 1024)
+	for i := 0; i < 1024; i++ {
+		b[i] = byte(grand.N(0, 255))
+	}
+
+	fmt.Println(bytesToHexStr(b))
+	fmt.Println(len(b))
+	fmt.Println(len(bytesToHexStr(b)))
+	fmt.Println(gbase64.EncodeToString(b))
+	fmt.Println(len(gbase64.EncodeToString(b)))
 }
