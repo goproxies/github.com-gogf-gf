@@ -288,7 +288,7 @@ func (a *Array) PopRight() (value interface{}, found bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	index := len(a.array) - 1
-	if index <= 0 {
+	if index < 0 {
 		return nil, false
 	}
 	value = a.array[index]
@@ -488,6 +488,7 @@ func (a *Array) Search(value interface{}) int {
 }
 
 // Unique uniques the array, clear repeated items.
+// Example: [1,1,2,3,2] -> [1,2,3]
 func (a *Array) Unique() *Array {
 	a.mu.Lock()
 	for i := 0; i < len(a.array)-1; i++ {
@@ -717,7 +718,8 @@ func (a *Array) String() string {
 }
 
 // MarshalJSON implements the interface MarshalJSON for json.Marshal.
-func (a *Array) MarshalJSON() ([]byte, error) {
+// Note that do not use pointer as its receiver here.
+func (a Array) MarshalJSON() ([]byte, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return json.Marshal(a.array)
