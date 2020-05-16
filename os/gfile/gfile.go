@@ -25,8 +25,11 @@ const (
 )
 
 var (
-	// Default perm for file opening.
-	DefaultPerm = os.FileMode(0666)
+	// DefaultPerm is the default perm for file opening.
+	DefaultPermOpen = os.FileMode(0666)
+
+	// DefaultPermCopy is the default perm for file/folder copy.
+	DefaultPermCopy = os.FileMode(0777)
 
 	// The absolute file path for main package.
 	// It can be only checked and set once.
@@ -92,7 +95,7 @@ func OpenFile(path string, flag int, perm os.FileMode) (*os.File, error) {
 // The default <perm> is 0666.
 // The parameter <flag> is like: O_RDONLY, O_RDWR, O_RDWR|O_CREATE|O_TRUNC, etc.
 func OpenWithFlag(path string, flag int) (*os.File, error) {
-	f, err := os.OpenFile(path, flag, DefaultPerm)
+	f, err := os.OpenFile(path, flag, DefaultPermOpen)
 	if err != nil {
 		return nil, err
 	}
@@ -134,14 +137,17 @@ func Exists(path string) bool {
 func IsDir(path string) bool {
 	s, err := os.Stat(path)
 	if err != nil {
-		return false
+		panic(err)
 	}
 	return s.IsDir()
 }
 
 // Pwd returns absolute path of current working directory.
 func Pwd() string {
-	path, _ := os.Getwd()
+	path, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
 	return path
 }
 
@@ -155,7 +161,7 @@ func Chdir(dir string) error {
 func IsFile(path string) bool {
 	s, err := os.Stat(path)
 	if err != nil {
-		return false
+		panic(err)
 	}
 	return !s.IsDir()
 }
@@ -232,7 +238,7 @@ func Remove(path string) error {
 // IsReadable checks whether given <path> is readable.
 func IsReadable(path string) bool {
 	result := true
-	file, err := os.OpenFile(path, os.O_RDONLY, DefaultPerm)
+	file, err := os.OpenFile(path, os.O_RDONLY, DefaultPermOpen)
 	if err != nil {
 		result = false
 	}
@@ -256,7 +262,7 @@ func IsWritable(path string) bool {
 		}
 	} else {
 		// 如果是文件，那么判断文件是否可打开
-		file, err := os.OpenFile(path, os.O_WRONLY, DefaultPerm)
+		file, err := os.OpenFile(path, os.O_WRONLY, DefaultPermOpen)
 		if err != nil {
 			result = false
 		}
@@ -313,11 +319,17 @@ func SelfDir() string {
 // Trailing path separators are removed before extracting the last element.
 // If the path is empty, Base returns ".".
 // If the path consists entirely of separators, Basename returns a single separator.
+// Example:
+// /var/www/file.js -> file.js
+// file.js          -> file.js
 func Basename(path string) string {
 	return filepath.Base(path)
 }
 
 // Name returns the last element of path without file extension.
+// Example:
+// /var/www/file.js -> file
+// file.js          -> file
 func Name(path string) string {
 	base := filepath.Base(path)
 	if i := strings.LastIndexByte(base, '.'); i != -1 {
