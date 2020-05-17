@@ -2,11 +2,47 @@ package main
 
 import (
 	"fmt"
-	"github.com/gogf/gf/os/gfile"
+	"net"
 )
 
+func getMacAddrs() (macAddrs []string) {
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		fmt.Printf("fail to get net interfaces: %v", err)
+		return macAddrs
+	}
+
+	for _, netInterface := range netInterfaces {
+		macAddr := netInterface.HardwareAddr.String()
+		if len(macAddr) == 0 {
+			continue
+		}
+
+		macAddrs = append(macAddrs, macAddr)
+	}
+	return macAddrs
+}
+
+func getIPs() (ips []string) {
+
+	interfaceAddr, err := net.InterfaceAddrs()
+	if err != nil {
+		fmt.Printf("fail to get net interface addrs: %v", err)
+		return ips
+	}
+
+	for _, address := range interfaceAddr {
+		ipNet, isValidIpNet := address.(*net.IPNet)
+		if isValidIpNet && !ipNet.IP.IsLoopback() {
+			if ipNet.IP.To4() != nil {
+				ips = append(ips, ipNet.IP.String())
+			}
+		}
+	}
+	return ips
+}
+
 func main() {
-	s := `/Users/john/Workspace/Go/GOPATH/pkg/mod/github.com/nats-io/nats-server/v2@v2.1.4`
-	d := `/Users/john/Workspace/Go/GOPATH/src/github.com/nats-io/nats-server/v2`
-	fmt.Println(gfile.Copy(s, d))
+	fmt.Printf("mac addrs: %q\n", getMacAddrs())
+	fmt.Printf("ips: %q\n", getIPs())
 }
