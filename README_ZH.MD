@@ -127,7 +127,7 @@ ab -t 10 -c 100 http://127.0.0.1:3000/json
 - WX交流群：微信添加`389961817`备注`GF`
 - 主库ISSUE：https://github.com/gogf/gf/issues
 
-> 建议通过阅读`Gorame`的源码以及API文档深度学习`GoFrame`，了解更多的精妙设计。
+> 建议通过阅读`GoFrame`的源码以及API文档深度学习`GoFrame`，了解更多的精妙设计。
 
 # 协议
 
@@ -150,3 +150,4 @@ ab -t 10 -c 100 http://127.0.0.1:3000/json
 
 # 感谢
 <a href="https://www.jetbrains.com/?from=GoFrame"><img src="https://goframe.org/images/jetbrains.png" width="100" alt="JetBrains"/></a>
+
