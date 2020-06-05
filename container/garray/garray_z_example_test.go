@@ -72,8 +72,50 @@ func Example_basic() {
 	// []
 }
 
+func Example_iterate() {
+	array := garray.NewStrArrayFrom(g.SliceStr{"a", "b", "c"})
+	// Iterator is alias of IteratorAsc, which iterates the array readonly in ascending order
+	//  with given callback function <f>.
+	// If <f> returns true, then it continues iterating; or false to stop.
+	array.Iterator(func(k int, v string) bool {
+		fmt.Println(k, v)
+		return true
+	})
+	// IteratorDesc iterates the array readonly in descending order with given callback function <f>.
+	// If <f> returns true, then it continues iterating; or false to stop.
+	array.IteratorDesc(func(k int, v string) bool {
+		fmt.Println(k, v)
+		return true
+	})
+
+	// Output:
+	// 0 a
+	// 1 b
+	// 2 c
+	// 2 c
+	// 1 b
+	// 0 a
+}
+
+func Example_reverse() {
+	array := garray.NewFrom(g.Slice{1, 2, 3, 4, 5, 6, 7, 8, 9})
+
+	// Reverse makes array with elements in reverse order.
+	fmt.Println(array.Reverse().Slice())
+
+	// Output:
+	// [9 8 7 6 5 4 3 2 1]
+}
+
+func Example_shuffle() {
+	array := garray.NewFrom(g.Slice{1, 2, 3, 4, 5, 6, 7, 8, 9})
+
+	// Shuffle randomly shuffles the array.
+	fmt.Println(array.Shuffle().Slice())
+}
+
 func Example_rand() {
-	array := garray.NewFrom([]interface{}{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	array := garray.NewFrom(g.Slice{1, 2, 3, 4, 5, 6, 7, 8, 9})
 
 	// Randomly retrieve and return 2 items from the array.
 	// It does not delete the items from array.
@@ -82,6 +124,26 @@ func Example_rand() {
 	// Randomly pick and return one item from the array.
 	// It deletes the picked up item from array.
 	fmt.Println(array.PopRand())
+}
+
+func Example_join() {
+	array := garray.NewFrom(g.Slice{"a", "b", "c", "d"})
+	fmt.Println(array.Join(","))
+
+	// Output:
+	// a,b,c,d
+}
+
+func Example_chunk() {
+	array := garray.NewFrom(g.Slice{1, 2, 3, 4, 5, 6, 7, 8, 9})
+
+	// Chunk splits an array into multiple arrays,
+	// the size of each array is determined by <size>.
+	// The last chunk may contain less than size elements.
+	fmt.Println(array.Chunk(2))
+
+	// Output:
+	// [[1 2] [3 4] [5 6] [7 8] [9]]
 }
 
 func Example_popItem() {
@@ -101,10 +163,38 @@ func Example_popItem() {
 	// [7 8]
 }
 
+func Example_walk() {
+	var array garray.StrArray
+	tables := g.SliceStr{"user", "user_detail"}
+	prefix := "gf_"
+	array.Append(tables...)
+	// Add prefix for given table names.
+	array.Walk(func(value string) string {
+		return prefix + value
+	})
+	fmt.Println(array.Slice())
+
+	// Output:
+	// [gf_user gf_user_detail]
+}
+
+func Example_contains() {
+	var array garray.StrArray
+	array.Append("a")
+	fmt.Println(array.Contains("a"))
+	fmt.Println(array.Contains("A"))
+	fmt.Println(array.ContainsI("A"))
+
+	// Output:
+	// true
+	// false
+	// true
+}
+
 func Example_mergeArray() {
-	array1 := garray.NewFrom([]interface{}{1, 2})
-	array2 := garray.NewFrom([]interface{}{3, 4})
-	slice1 := []interface{}{5, 6}
+	array1 := garray.NewFrom(g.Slice{1, 2})
+	array2 := garray.NewFrom(g.Slice{3, 4})
+	slice1 := g.Slice{5, 6}
 	slice2 := []int{7, 8}
 	slice3 := []string{"9", "0"}
 	fmt.Println(array1.Slice())
