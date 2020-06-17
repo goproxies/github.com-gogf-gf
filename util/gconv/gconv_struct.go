@@ -103,7 +103,8 @@ func Struct(params interface{}, pointer interface{}, mapping ...map[string]strin
 			}
 		}
 	}
-	// The key of the map is the attribute name of the struct,
+
+	// The key of the attrMap is the attribute name of the struct,
 	// and the value is its replaced name for later comparison to improve performance.
 	var (
 		attrMap  = make(map[string]string)
@@ -121,10 +122,17 @@ func Struct(params interface{}, pointer interface{}, mapping ...map[string]strin
 	if len(attrMap) == 0 {
 		return nil
 	}
+
+	// The key of the tagMap is the attribute name of the struct,
+	// and the value is its replaced tag name for later comparison to improve performance.
+	tagMap := make(map[string]string)
+	for k, v := range structs.TagMapName(pointer, structTagPriority, true) {
+		tagMap[v] = replaceCharReg.ReplaceAllString(k, "")
+	}
+
 	var (
 		attrName  string
 		checkName string
-		tagMap    = structs.TagMapName(pointer, structTagPriority, true)
 	)
 	for mapK, mapV := range paramsMap {
 		attrName = ""
@@ -134,22 +142,22 @@ func Struct(params interface{}, pointer interface{}, mapping ...map[string]strin
 
 		// Matching the parameters to struct tag names.
 		// The <tagV> is the attribute name of the struct.
-		for tagK, tagV := range tagMap {
-			if strings.EqualFold(checkName, tagK) {
-				attrName = tagV
+		for attrKey, cmpKey := range tagMap {
+			if strings.EqualFold(checkName, cmpKey) {
+				attrName = attrKey
 				break
 			}
 		}
 
 		// Matching the parameters to struct attributes.
-		for attrK, attrV := range attrMap {
+		for attrKey, cmpKey := range attrMap {
 			// Eg:
 			// UserName  eq user_name
 			// User-Name eq username
 			// username  eq userName
 			// etc.
-			if strings.EqualFold(checkName, attrV) {
-				attrName = attrK
+			if strings.EqualFold(checkName, cmpKey) {
+				attrName = attrKey
 				break
 			}
 		}
@@ -233,34 +241,28 @@ func bindVarToStructAttr(elem reflect.Value, name string, value interface{}) (er
 	return nil
 }
 
-// bindVarToStructByIndex sets value to struct object attribute by index.
-func bindVarToStructByIndex(elem reflect.Value, index int, value interface{}) (err error) {
-	structFieldValue := elem.FieldByIndex([]int{index})
-	if !structFieldValue.IsValid() {
-		return nil
-	}
-	// CanSet checks whether attribute is public accessible.
-	if !structFieldValue.CanSet() {
-		return nil
-	}
-	// If any panic, it secondly uses reflect conversion and assignment.
-	defer func() {
-		if recover() != nil {
-			err = bindVarToReflectValue(structFieldValue, value)
-		}
-	}()
-	if empty.IsNil(value) {
-		structFieldValue.Set(reflect.Zero(structFieldValue.Type()))
-	} else {
-		// It firstly simply assigns the value to the attribute.
-		structFieldValue.Set(reflect.ValueOf(Convert(value, structFieldValue.Type().String())))
-	}
-	return nil
-}
-
 // bindVarToReflectValue sets <value> to reflect value object <structFieldValue>.
 func bindVarToReflectValue(structFieldValue reflect.Value, value interface{}) (err error) {
-	switch structFieldValue.Kind() {
+	kind := structFieldValue.Kind()
+
+	// Converting using interface, for some kinds.
+	switch kind {
+	case reflect.Slice, reflect.Array, reflect.Ptr, reflect.Interface:
+		if !structFieldValue.IsNil() {
+			if v, ok := structFieldValue.Interface().(apiSet); ok {
+				v.Set(value)
+				return nil
+			} else if v, ok := structFieldValue.Interface().(apiUnmarshalValue); ok {
+				err = v.UnmarshalValue(value)
+				if err == nil {
+					return err
+				}
+			}
+		}
+	}
+
+	// Converting by kind.
+	switch kind {
 	case reflect.Struct:
 		if err := Struct(value, structFieldValue); err != nil {
 			// Note there's reflect conversion mechanism here.
