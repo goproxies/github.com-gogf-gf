@@ -23,7 +23,7 @@ func (c *Config) Get(pattern string, def ...interface{}) interface{} {
 	return nil
 }
 
-func (c *Config) GetVar(pattern string, def ...interface{}) *gvar.Var {
+func (c *Config) GetVar(pattern string, def ...interface{}) gvar.Var {
 	if j := c.getJson(); j != nil {
 		return gvar.New(j.Get(pattern, def...))
 	}
@@ -40,6 +40,13 @@ func (c *Config) Contains(pattern string) bool {
 func (c *Config) GetMap(pattern string, def ...interface{}) map[string]interface{} {
 	if j := c.getJson(); j != nil {
 		return j.GetMap(pattern, def...)
+	}
+	return nil
+}
+
+func (c *Config) GetMapStrStr(pattern string, def ...interface{}) map[string]string {
+	if j := c.getJson(); j != nil {
+		return j.GetMapStrStr(pattern, def...)
 	}
 	return nil
 }

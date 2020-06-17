@@ -50,12 +50,13 @@ func (w *ResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return w.writer.(http.Hijacker).Hijack()
 }
 
-// OutputBuffer outputs the buffer to client.
-func (w *ResponseWriter) OutputBuffer() {
+// OutputBuffer outputs the buffer to client and clears the buffer.
+func (w *ResponseWriter) Flush() {
 	if w.hijacked {
 		return
 	}
 	if w.Status != 0 && !w.wroteHeader {
+		w.wroteHeader = true
 		w.writer.WriteHeader(w.Status)
 	}
 	// Default status text output.

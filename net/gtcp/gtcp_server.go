@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"sync"
 
 	"github.com/gogf/gf/container/gmap"
 	"github.com/gogf/gf/os/glog"
@@ -23,10 +24,11 @@ const (
 
 // TCP Server.
 type Server struct {
-	listen    net.Listener
-	address   string
-	handler   func(*Conn)
-	tlsConfig *tls.Config
+	mu        sync.Mutex   // Used for Server.listen concurrent safety.
+	listen    net.Listener // Listener.
+	address   string       // Server listening address.
+	handler   func(*Conn)  // Connection handler.
+	tlsConfig *tls.Config  // TLS configuration.
 }
 
 // Map for name to server, for singleton purpose.
@@ -52,7 +54,7 @@ func NewServer(address string, handler func(*Conn), name ...string) *Server {
 		address: address,
 		handler: handler,
 	}
-	if len(name) > 0 {
+	if len(name) > 0 && name[0] != "" {
 		serverMapping.Set(name[0], s)
 	}
 	return s
@@ -103,6 +105,11 @@ func (s *Server) SetTLSConfig(tlsConfig *tls.Config) {
 
 // Close closes the listener and shutdowns the server.
 func (s *Server) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listen == nil {
+		return nil
+	}
 	return s.listen.Close()
 }
 
@@ -110,26 +117,30 @@ func (s *Server) Close() error {
 func (s *Server) Run() (err error) {
 	if s.handler == nil {
 		err = errors.New("start running failed: socket handler not defined")
-		glog.Fatal(err)
+		glog.Error(err)
 		return
 	}
 	if s.tlsConfig != nil {
 		// TLS Server
+		s.mu.Lock()
 		s.listen, err = tls.Listen("tcp", s.address, s.tlsConfig)
+		s.mu.Unlock()
 		if err != nil {
-			glog.Fatal(err)
+			glog.Error(err)
 			return
 		}
 	} else {
 		// Normal Server
 		addr, err := net.ResolveTCPAddr("tcp", s.address)
 		if err != nil {
-			glog.Fatal(err)
+			glog.Error(err)
 			return err
 		}
+		s.mu.Lock()
 		s.listen, err = net.ListenTCP("tcp", addr)
+		s.mu.Unlock()
 		if err != nil {
-			glog.Fatal(err)
+			glog.Error(err)
 			return err
 		}
 	}

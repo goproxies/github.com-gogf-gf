@@ -8,7 +8,6 @@ package ghttp
 
 import (
 	"github.com/gogf/gf/container/gvar"
-	"github.com/gogf/gf/internal/structs"
 	"github.com/gogf/gf/util/gconv"
 )
 
@@ -16,16 +15,18 @@ import (
 // It returns <def> if <key> does not exist in neither form nor body.
 // It returns nil if <def> is not passed.
 //
-// Note that if there're multiple parameters with the same name, the parameters are retrieved and overwrote
-// in order of priority: form > body.
+// Note that if there're multiple parameters with the same name, the parameters are retrieved
+// and overwrote in order of priority: form > body.
+//
+// Deprecated.
 func (r *Request) GetPost(key string, def ...interface{}) interface{} {
-	r.ParseForm()
+	r.parseForm()
 	if len(r.formMap) > 0 {
 		if v, ok := r.formMap[key]; ok {
 			return v
 		}
 	}
-	r.ParseBody()
+	r.parseBody()
 	if len(r.bodyMap) > 0 {
 		if v, ok := r.bodyMap[key]; ok {
 			return v
@@ -37,66 +38,82 @@ func (r *Request) GetPost(key string, def ...interface{}) interface{} {
 	return nil
 }
 
-func (r *Request) GetPostVar(key string, def ...interface{}) *gvar.Var {
+// Deprecated.
+func (r *Request) GetPostVar(key string, def ...interface{}) gvar.Var {
 	return gvar.New(r.GetPost(key, def...))
 }
 
+// Deprecated.
 func (r *Request) GetPostString(key string, def ...interface{}) string {
 	return r.GetPostVar(key, def...).String()
 }
 
+// Deprecated.
 func (r *Request) GetPostBool(key string, def ...interface{}) bool {
 	return r.GetPostVar(key, def...).Bool()
 }
 
+// Deprecated.
 func (r *Request) GetPostInt(key string, def ...interface{}) int {
 	return r.GetPostVar(key, def...).Int()
 }
 
+// Deprecated.
 func (r *Request) GetPostInt32(key string, def ...interface{}) int32 {
 	return r.GetPostVar(key, def...).Int32()
 }
 
+// Deprecated.
 func (r *Request) GetPostInt64(key string, def ...interface{}) int64 {
 	return r.GetPostVar(key, def...).Int64()
 }
 
+// Deprecated.
 func (r *Request) GetPostInts(key string, def ...interface{}) []int {
 	return r.GetPostVar(key, def...).Ints()
 }
 
+// Deprecated.
 func (r *Request) GetPostUint(key string, def ...interface{}) uint {
 	return r.GetPostVar(key, def...).Uint()
 }
 
+// Deprecated.
 func (r *Request) GetPostUint32(key string, def ...interface{}) uint32 {
 	return r.GetPostVar(key, def...).Uint32()
 }
 
+// Deprecated.
 func (r *Request) GetPostUint64(key string, def ...interface{}) uint64 {
 	return r.GetPostVar(key, def...).Uint64()
 }
 
+// Deprecated.
 func (r *Request) GetPostFloat32(key string, def ...interface{}) float32 {
 	return r.GetPostVar(key, def...).Float32()
 }
 
+// Deprecated.
 func (r *Request) GetPostFloat64(key string, def ...interface{}) float64 {
 	return r.GetPostVar(key, def...).Float64()
 }
 
+// Deprecated.
 func (r *Request) GetPostFloats(key string, def ...interface{}) []float64 {
 	return r.GetPostVar(key, def...).Floats()
 }
 
+// Deprecated.
 func (r *Request) GetPostArray(key string, def ...interface{}) []string {
 	return r.GetPostVar(key, def...).Strings()
 }
 
+// Deprecated.
 func (r *Request) GetPostStrings(key string, def ...interface{}) []string {
 	return r.GetPostVar(key, def...).Strings()
 }
 
+// Deprecated.
 func (r *Request) GetPostInterfaces(key string, def ...interface{}) []interface{} {
 	return r.GetPostVar(key, def...).Interfaces()
 }
@@ -107,9 +124,11 @@ func (r *Request) GetPostInterfaces(key string, def ...interface{}) []interface{
 //
 // Note that if there're multiple parameters with the same name, the parameters are retrieved and overwrote
 // in order of priority: form > body.
+//
+// Deprecated.
 func (r *Request) GetPostMap(kvMap ...map[string]interface{}) map[string]interface{} {
-	r.ParseForm()
-	r.ParseBody()
+	r.parseForm()
+	r.parseBody()
 	var ok, filter bool
 	if len(kvMap) > 0 && kvMap[0] != nil {
 		filter = true
@@ -146,6 +165,8 @@ func (r *Request) GetPostMap(kvMap ...map[string]interface{}) map[string]interfa
 // as map[string]string. The parameter <kvMap> specifies the keys
 // retrieving from client parameters, the associated values are the default values if the client
 // does not pass.
+//
+// Deprecated.
 func (r *Request) GetPostMapStrStr(kvMap ...map[string]interface{}) map[string]string {
 	postMap := r.GetPostMap(kvMap...)
 	if len(postMap) > 0 {
@@ -159,13 +180,15 @@ func (r *Request) GetPostMapStrStr(kvMap ...map[string]interface{}) map[string]s
 }
 
 // GetPostMapStrVar retrieves and returns all parameters in the form and body passed from client
-// as map[string]*gvar.Var. The parameter <kvMap> specifies the keys
+// as map[string]gvar.Var. The parameter <kvMap> specifies the keys
 // retrieving from client parameters, the associated values are the default values if the client
 // does not pass.
-func (r *Request) GetPostMapStrVar(kvMap ...map[string]interface{}) map[string]*gvar.Var {
+//
+// Deprecated.
+func (r *Request) GetPostMapStrVar(kvMap ...map[string]interface{}) map[string]gvar.Var {
 	postMap := r.GetPostMap(kvMap...)
 	if len(postMap) > 0 {
-		m := make(map[string]*gvar.Var, len(postMap))
+		m := make(map[string]gvar.Var, len(postMap))
 		for k, v := range postMap {
 			m[k] = gvar.New(v)
 		}
@@ -174,16 +197,19 @@ func (r *Request) GetPostMapStrVar(kvMap ...map[string]interface{}) map[string]*
 	return nil
 }
 
-// GetPostToStruct retrieves all parameters in the form and body passed from client
+// GetPostStruct retrieves all parameters in the form and body passed from client
 // and converts them to given struct object. Note that the parameter <pointer> is a pointer
 // to the struct object. The optional parameter <mapping> is used to specify the key to
 // attribute mapping.
+//
+// Deprecated.
+func (r *Request) GetPostStruct(pointer interface{}, mapping ...map[string]string) error {
+	return gconv.StructDeep(r.GetPostMap(), pointer, mapping...)
+}
+
+// GetPostToStruct is alias of GetQueryStruct. See GetPostStruct.
+//
+// Deprecated.
 func (r *Request) GetPostToStruct(pointer interface{}, mapping ...map[string]string) error {
-	tagMap := structs.TagMapName(pointer, paramTagPriority, true)
-	if len(mapping) > 0 {
-		for k, v := range mapping[0] {
-			tagMap[k] = v
-		}
-	}
-	return gconv.StructDeep(r.GetPostMap(), pointer, tagMap)
+	return r.GetPostStruct(pointer, mapping...)
 }

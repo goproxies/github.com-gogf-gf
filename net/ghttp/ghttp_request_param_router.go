@@ -12,7 +12,9 @@ import "github.com/gogf/gf/container/gvar"
 // It returns <def> if <key> does not exist.
 func (r *Request) GetRouterValue(key string, def ...interface{}) interface{} {
 	if r.routerMap != nil {
-		return r.routerMap[key]
+		if v, ok := r.routerMap[key]; ok {
+			return v
+		}
 	}
 	if len(def) > 0 {
 		return def[0]
@@ -20,9 +22,9 @@ func (r *Request) GetRouterValue(key string, def ...interface{}) interface{} {
 	return nil
 }
 
-// GetRouterVar retrieves and returns the router value as *gvar.var with given key name <key>.
+// GetRouterVar retrieves and returns the router value as gvar.Var with given key name <key>.
 // It returns <def> if <key> does not exist.
-func (r *Request) GetRouterVar(key string, def ...interface{}) *gvar.Var {
+func (r *Request) GetRouterVar(key string, def ...interface{}) gvar.Var {
 	return gvar.New(r.GetRouterValue(key, def...))
 }
 

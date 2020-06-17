@@ -16,7 +16,7 @@ import (
 // Manager for sessions.
 type Manager struct {
 	ttl         time.Duration // TTL for sessions.
-	storage     Storage       // Storage interface for session storage Set/Get.
+	storage     Storage       // Storage interface for session storage.
 	sessionData *gcache.Cache // Session data cache for session TTL.
 }
 
@@ -35,6 +35,8 @@ func New(ttl time.Duration, storage ...Storage) *Manager {
 }
 
 // New creates or fetches the session for given session id.
+// The parameter <sessionId> is optional, it creates a new one if not it's passed
+// depending on Storage.New.
 func (m *Manager) New(sessionId ...string) *Session {
 	var id string
 	if len(sessionId) > 0 && sessionId[0] != "" {

@@ -9,13 +9,12 @@ package ghttp
 import (
 	"github.com/gogf/gf/container/gvar"
 
-	"github.com/gogf/gf/internal/structs"
 	"github.com/gogf/gf/util/gconv"
 )
 
 // SetQuery sets custom query value with key-value pair.
 func (r *Request) SetQuery(key string, value interface{}) {
-	r.ParseQuery()
+	r.parseQuery()
 	if r.queryMap == nil {
 		r.queryMap = make(map[string]interface{})
 	}
@@ -23,19 +22,19 @@ func (r *Request) SetQuery(key string, value interface{}) {
 }
 
 // GetQuery retrieves and returns parameter with given name <key> from query string
-// and request body. It returns <def> if <key> does not exist in the query. It returns nil
-// if <def> is not passed.
+// and request body. It returns <def> if <key> does not exist in the query and <def> is given,
+// or else it returns nil.
 //
-// Note that if there're multiple parameters with the same name, the parameters are retrieved and overwrote
-// in order of priority: query > body.
+// Note that if there're multiple parameters with the same name, the parameters are retrieved
+// and overwrote in order of priority: query > body.
 func (r *Request) GetQuery(key string, def ...interface{}) interface{} {
-	r.ParseQuery()
+	r.parseQuery()
 	if len(r.queryMap) > 0 {
 		if v, ok := r.queryMap[key]; ok {
 			return v
 		}
 	}
-	r.ParseBody()
+	r.parseBody()
 	if len(r.bodyMap) > 0 {
 		if v, ok := r.bodyMap[key]; ok {
 			return v
@@ -47,7 +46,7 @@ func (r *Request) GetQuery(key string, def ...interface{}) interface{} {
 	return nil
 }
 
-func (r *Request) GetQueryVar(key string, def ...interface{}) *gvar.Var {
+func (r *Request) GetQueryVar(key string, def ...interface{}) gvar.Var {
 	return gvar.New(r.GetQuery(key, def...))
 }
 
@@ -118,8 +117,8 @@ func (r *Request) GetQueryInterfaces(key string, def ...interface{}) []interface
 // Note that if there're multiple parameters with the same name, the parameters are retrieved and overwrote
 // in order of priority: query > body.
 func (r *Request) GetQueryMap(kvMap ...map[string]interface{}) map[string]interface{} {
-	r.ParseQuery()
-	r.ParseBody()
+	r.parseQuery()
+	r.parseBody()
 	var m map[string]interface{}
 	if len(kvMap) > 0 && kvMap[0] != nil {
 		if len(r.queryMap) == 0 && len(r.bodyMap) == 0 {
@@ -173,13 +172,13 @@ func (r *Request) GetQueryMapStrStr(kvMap ...map[string]interface{}) map[string]
 }
 
 // GetQueryMapStrVar retrieves and returns all parameters passed from client using HTTP GET method
-// as map[string]*gvar.Var. The parameter <kvMap> specifies the keys
+// as map[string]gvar.Var. The parameter <kvMap> specifies the keys
 // retrieving from client parameters, the associated values are the default values if the client
 // does not pass.
-func (r *Request) GetQueryMapStrVar(kvMap ...map[string]interface{}) map[string]*gvar.Var {
+func (r *Request) GetQueryMapStrVar(kvMap ...map[string]interface{}) map[string]gvar.Var {
 	queryMap := r.GetQueryMap(kvMap...)
 	if len(queryMap) > 0 {
-		m := make(map[string]*gvar.Var, len(queryMap))
+		m := make(map[string]gvar.Var, len(queryMap))
 		for k, v := range queryMap {
 			m[k] = gvar.New(v)
 		}
@@ -188,17 +187,17 @@ func (r *Request) GetQueryMapStrVar(kvMap ...map[string]interface{}) map[string]
 	return nil
 }
 
-// GetQueryToStruct retrieves all parameters passed from client using HTTP GET method
+// GetQueryStruct retrieves all parameters passed from client using HTTP GET method
 // and converts them to given struct object. Note that the parameter <pointer> is a pointer
 // to the struct object. The optional parameter <mapping> is used to specify the key to
 // attribute mapping.
+func (r *Request) GetQueryStruct(pointer interface{}, mapping ...map[string]string) error {
+	r.parseQuery()
+	return gconv.StructDeep(r.GetQueryMap(), pointer, mapping...)
+}
+
+// GetQueryToStruct is alias of GetQueryStruct. See GetQueryStruct.
+// Deprecated.
 func (r *Request) GetQueryToStruct(pointer interface{}, mapping ...map[string]string) error {
-	r.ParseQuery()
-	tagMap := structs.TagMapName(pointer, paramTagPriority, true)
-	if len(mapping) > 0 {
-		for k, v := range mapping[0] {
-			tagMap[k] = v
-		}
-	}
-	return gconv.StructDeep(r.GetQueryMap(), pointer, tagMap)
+	return r.GetQueryStruct(pointer, mapping...)
 }

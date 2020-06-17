@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gogf/gf/debug/gdebug"
+	"github.com/gogf/gf/internal/intlog"
 	"net/http"
 	"os"
 	"reflect"
@@ -36,84 +37,84 @@ import (
 )
 
 type (
-	// Server结构体
+	// Server wraps the http.Server and provides more feature.
 	Server struct {
-		name             string                           // 服务名称
-		config           ServerConfig                     // 配置对象
-		servers          []*gracefulServer                // 底层http.Server列表
-		serverCount      *gtype.Int                       // 底层http.Server数量
-		closeChan        chan struct{}                    // 用以关闭事件通知的通道
-		servedCount      *gtype.Int                       // 已经服务的请求数(4-8字节，不考虑溢出情况)，同时作为请求ID
-		serveTree        map[string]interface{}           // 所有注册的服务回调函数(路由表，树型结构，哈希表+链表优先级匹配)
-		serveCache       *gcache.Cache                    // 服务注册路由内存缓存
-		routesMap        map[string][]registeredRouteItem // 已经注册的路由及对应的注册方法文件地址(用以路由重复注册判断)
-		statusHandlerMap map[string]HandlerFunc           // 不同状态码下的注册处理方法(例如404状态时的处理方法)
-		sessionManager   *gsession.Manager                // Session管理器
+		name             string                           // Unique name for instance management.
+		config           ServerConfig                     // Configuration.
+		plugins          []Plugin                         // Plugin array.
+		servers          []*gracefulServer                // Underlying http.Server array.
+		serverCount      *gtype.Int                       // Underlying http.Server count.
+		closeChan        chan struct{}                    // Used for underlying server closing event notification.
+		serveTree        map[string]interface{}           // The route map tree.
+		serveCache       *gcache.Cache                    // Server cache for internal usage.
+		routesMap        map[string][]registeredRouteItem // Route map mainly for route dumps and repeated route checks.
+		statusHandlerMap map[string]HandlerFunc           // Custom status handler map.
+		sessionManager   *gsession.Manager                // Session manager.
 	}
 
-	// 路由对象
+	// Router object.
 	Router struct {
-		Uri      string   // 注册时的pattern - uri
-		Method   string   // 注册时的pattern - method
-		Domain   string   // 注册时的pattern - domain
-		RegRule  string   // 路由规则解析后对应的正则表达式
-		RegNames []string // 路由规则解析后对应的变量名称数组
-		Priority int      // 优先级，用于链表排序，值越大优先级越高
+		Uri      string   // URI.
+		Method   string   // HTTP method
+		Domain   string   // Bound domain.
+		RegRule  string   // Parsed regular expression for route matching.
+		RegNames []string // Parsed router parameter names.
+		Priority int      // Just for reference.
 	}
 
-	// Router item just for dumping.
+	// Router item just for route dumps.
 	RouterItem struct {
-		Server           string
-		Address          string
-		Domain           string
-		Type             int
-		Middleware       string
-		Method           string
-		Route            string
-		Priority         int
-		IsServiceHandler bool
-		handler          *handlerItem
+		Server           string       // Server name.
+		Address          string       // Listening address.
+		Domain           string       // Bound domain.
+		Type             int          // Router type.
+		Middleware       string       // Bound middleware.
+		Method           string       // Handler method name.
+		Route            string       // Route URI.
+		Priority         int          // Just for reference.
+		IsServiceHandler bool         // Is service handler.
+		handler          *handlerItem // The handler.
 	}
 
-	// 路由函数注册信息
+	// handlerItem is the registered handler for route handling,
+	// including middleware and hook functions.
 	handlerItem struct {
-		itemId     int                // 用于标识该注册函数的唯一性ID
-		itemName   string             // 注册的函数名称信息(用于路由信息打印)
-		itemType   int                // 注册函数类型(对象/函数/控制器/中间件/钩子函数)
-		itemFunc   HandlerFunc        // 函数内存地址(与以上两个参数二选一)
-		initFunc   HandlerFunc        // 初始化请求回调函数(对象注册方式下有效)
-		shutFunc   HandlerFunc        // 完成请求回调函数(对象注册方式下有效)
-		middleware []HandlerFunc      // 绑定的中间件列表
-		ctrlInfo   *handlerController // 控制器服务函数反射信息
-		hookName   string             // 钩子类型名称(注册函数类型为钩子函数下有效)
-		router     *Router            // 注册时绑定的路由对象
+		itemId     int                // Unique handler item id mark.
+		itemName   string             // Handler name, which is automatically retrieved from runtime stack when registered.
+		itemType   int                // Handler type: object/handler/controller/middleware/hook.
+		itemFunc   HandlerFunc        // Handler address.
+		initFunc   HandlerFunc        // Initialization function when request enters the object(only available for object register type).
+		shutFunc   HandlerFunc        // Shutdown function when request leaves out the object(only available for object register type).
+		middleware []HandlerFunc      // Bound middleware array.
+		ctrlInfo   *handlerController // Controller information for reflect usage.
+		hookName   string             // Hook type name.
+		router     *Router            // Router object.
+		source     string             // Source file path:line when registering.
 	}
 
-	// 根据特定URL.Path解析后的路由检索结果项
+	// handlerParsedItem is the item parsed from URL.Path.
 	handlerParsedItem struct {
-		handler *handlerItem      // 路由注册项
-		values  map[string]string // 特定URL.Path的Router解析参数
+		handler *handlerItem      // Handler information.
+		values  map[string]string // Router values parsed from URL.Path.
 	}
 
-	// 控制器服务函数反射信息
+	// handlerController is the controller information used for reflect.
 	handlerController struct {
-		name    string       // 方法名称
-		reflect reflect.Type // 控制器类型
+		name    string       // Handler method name.
+		reflect reflect.Type // Reflect type of the controller.
 	}
 
-	// 已注册的路由项
+	// registeredRouteItem stores the information of the router and is used for route map.
 	registeredRouteItem struct {
-		file    string       // 文件路径及行数地址
-		handler *handlerItem // 路由注册项
+		source  string       // Source file path and its line number.
+		handler *handlerItem // Handler object.
 	}
 
-	// pattern与回调函数的绑定map
-	handlerMap = map[string]*handlerItem
-
-	// HTTP注册函数
+	// Request handler function.
 	HandlerFunc = func(r *Request)
 
-	// 文件描述符map
+	// Listening file descriptor mapping.
+	// The key is either "http" or "https" and the value is its FD.
 	listenerFdMap = map[string]string
 )
 
@@ -140,62 +141,59 @@ const (
 )
 
 var (
-	// 所有支持的HTTP Method Map(初始化时自动填充),
-	// 用于快速检索需要
+	// methodsMap stores all supported HTTP method,
+	// it is used for quick HTTP method searching using map.
 	methodsMap = make(map[string]struct{})
 
-	// WebServer表，用以存储和检索名称与Server对象之间的关联关系
+	// serverMapping stores more than one server instances for current process.
+	// The key is the name of the server, and the value is its instance.
 	serverMapping = gmap.NewStrAnyMap(true)
 
-	// 正常运行的WebServer数量，如果没有运行、失败或者全部退出，那么该值为0
+	// serverRunning marks the running server count.
+	// If there no successful server running or all servers shutdown, this value is 0.
 	serverRunning = gtype.NewInt()
 
-	// WebSocket默认配置
+	// wsUpgrader is the default up-grader configuration for websocket.
 	wsUpgrader = websocket.Upgrader{
-		// 默认允许WebSocket请求跨域，权限控制可以由业务层自己负责，灵活度更高
+		// It does not check the origin in default, the application can do it itself.
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
 	}
-	// WebServer已完成服务事件通道，当有事件时表示服务完成，当前进程退出
+	// allDoneChan is the event for all server have done its serving and exit.
+	// It is used for process blocking purpose.
 	allDoneChan = make(chan struct{}, 1000)
 
-	// 用于服务进程初始化，只能初始化一次，采用“懒初始化”(在server运行时才初始化)
+	// serverProcessInited is used for lazy initialization for server.
+	// The process can only be initialized once.
 	serverProcessInited = gtype.NewBool()
 
-	// 是否开启WebServer平滑重启特性, 会开启额外的本地端口监听，用于进程管理通信(默认开启)
-	gracefulEnabled = true
+	// gracefulEnabled is used for graceful reload feature, which is false in default.
+	gracefulEnabled = false
 )
 
 func init() {
+	// Initialize the methods map.
 	for _, v := range strings.Split(HTTP_METHODS, ",") {
 		methodsMap[v] = struct{}{}
 	}
 }
 
-// 主要用于开发者在HTTP处理中自定义异常捕获时，判断捕获的异常是否Server抛出的自定义退出异常
-func IsExitError(err interface{}) bool {
-	errStr := gconv.String(err)
-	if strings.EqualFold(errStr, gEXCEPTION_EXIT) ||
-		strings.EqualFold(errStr, gEXCEPTION_EXIT_ALL) ||
-		strings.EqualFold(errStr, gEXCEPTION_EXIT_HOOK) {
-		return true
-	}
-	return false
-}
-
-// 是否开启平滑重启特性
+// SetGraceful enables/disables the graceful reload feature for server,
+// which is false in default.
+//
+// Note that this feature switch is not for single server instance but for whole process.
 func SetGraceful(enabled bool) {
 	gracefulEnabled = enabled
 }
 
-// Web Server进程初始化.
-// 注意该方法不能放置于包初始化方法init中，不使用ghttp.Server的功能便不能初始化对应的协程goroutine逻辑.
+// serverProcessInit initializes some process configurations, which can only be done once.
 func serverProcessInit() {
 	if !serverProcessInited.Cas(false, true) {
 		return
 	}
-	// 如果是完整重启，那么需要等待主进程销毁后，才开始执行监听，防止端口冲突
+	// This means it is a restart server, it should kill its parent before starting its listening,
+	// to avoid duplicated port listening in two processes.
 	if genv.Get(gADMIN_ACTION_RESTART_ENVKEY) != "" {
 		if p, e := os.FindProcess(gproc.PPid()); e == nil {
 			p.Kill()
@@ -205,21 +203,24 @@ func serverProcessInit() {
 		}
 	}
 
-	// 信号量管理操作监听
+	// Signal handler.
 	go handleProcessSignal()
-	// 异步监听进程间消息
+
+	// Process message handler.
+	// It's enabled only graceful feature is enabled.
 	if gracefulEnabled {
 		go handleProcessMessage()
 	}
 
-	// 是否处于开发环境，这里调用该方法初始化main包路径值，
-	// 防止异步服务goroutine获取main包路径失败，
-	// 该方法只有在main协程中才会执行。
+	// It's an ugly calling for better initializing the main package path
+	// in source development environment. It is useful only be used in main goroutine.
+	// It fails retrieving the main package path in asynchronized goroutines.
 	gfile.MainPkgPath()
 }
 
-// 获取/创建一个默认配置的HTTP Server(默认监听端口是80)
-// 单例模式，请保证name的唯一性
+// GetServer creates and returns a server instance using given name and default configurations.
+// Note that the parameter <name> should be unique for different servers. It returns an existing
+// server instance if given <name> is already existing in the server mapping.
 func GetServer(name ...interface{}) *Server {
 	serverName := gDEFAULT_SERVER
 	if len(name) > 0 && name[0] != "" {
@@ -228,9 +229,9 @@ func GetServer(name ...interface{}) *Server {
 	if s := serverMapping.Get(serverName); s != nil {
 		return s.(*Server)
 	}
-	c := defaultServerConfig
 	s := &Server{
 		name:             serverName,
+		plugins:          make([]Plugin, 0),
 		servers:          make([]*gracefulServer, 0),
 		closeChan:        make(chan struct{}, 10000),
 		serverCount:      gtype.NewInt(),
@@ -238,19 +239,18 @@ func GetServer(name ...interface{}) *Server {
 		serveTree:        make(map[string]interface{}),
 		serveCache:       gcache.New(),
 		routesMap:        make(map[string][]registeredRouteItem),
-		servedCount:      gtype.NewInt(),
 	}
-	// 初始化时使用默认配置
-	if err := s.SetConfig(c); err != nil {
+	// Initialize the server using default configurations.
+	if err := s.SetConfig(Config()); err != nil {
 		panic(err)
 	}
-	// 记录到全局ServerMap中
+	// Record the server to internal server mapping by name.
 	serverMapping.Set(serverName, s)
 	return s
 }
 
-// 作为守护协程异步执行(当同一进程中存在多个Web Server时，需要采用这种方式执行),
-// 需要结合Wait方式一起使用.
+// Start starts listening on configured port.
+// This function does not block the process, you can use function Wait blocking the process.
 func (s *Server) Start() error {
 	// Register group routes.
 	s.handlePreBindItems()
@@ -300,8 +300,17 @@ func (s *Server) Start() error {
 
 	// Default HTTP handler.
 	if s.config.Handler == nil {
-		s.config.Handler = http.HandlerFunc(s.defaultHandler)
+		s.config.Handler = s
 	}
+
+	// Install external plugins.
+	for _, p := range s.plugins {
+		if err := p.Install(s); err != nil {
+			s.Logger().Fatal(err)
+		}
+	}
+	// Check the group routes again.
+	s.handlePreBindItems()
 
 	// Start the HTTP server.
 	reloaded := false
@@ -325,7 +334,6 @@ func (s *Server) Start() error {
 			}
 		})
 	}
-
 	s.dumpRouterMap()
 	return nil
 }
@@ -335,31 +343,20 @@ func (s *Server) dumpRouterMap() {
 	if s.config.DumpRouterMap && len(s.routesMap) > 0 {
 		buffer := bytes.NewBuffer(nil)
 		table := tablewriter.NewWriter(buffer)
-		table.SetHeader([]string{"SERVER", "ADDRESS", "DOMAIN", "METHOD", "P", "ROUTE", "HANDLER", "MIDDLEWARE"})
+		table.SetHeader([]string{"SERVER", "DOMAIN", "ADDRESS", "METHOD", "ROUTE", "HANDLER", "MIDDLEWARE"})
 		table.SetRowLine(true)
 		table.SetBorder(false)
 		table.SetCenterSeparator("|")
-		table.SetColumnAlignment([]int{
-			tablewriter.ALIGN_CENTER,
-			tablewriter.ALIGN_CENTER,
-			tablewriter.ALIGN_CENTER,
-			tablewriter.ALIGN_CENTER,
-			tablewriter.ALIGN_CENTER,
-			tablewriter.ALIGN_LEFT,
-			tablewriter.ALIGN_LEFT,
-			tablewriter.ALIGN_LEFT,
-		})
 
 		for _, item := range s.GetRouterArray() {
-			data := make([]string, 8)
+			data := make([]string, 7)
 			data[0] = item.Server
-			data[1] = item.Address
-			data[2] = item.Domain
+			data[1] = item.Domain
+			data[2] = item.Address
 			data[3] = item.Method
-			data[4] = gconv.String(len(strings.Split(item.Route, "/")) - 1 + item.Priority)
-			data[5] = item.Route
-			data[6] = item.handler.itemName
-			data[7] = item.Middleware
+			data[4] = item.Route
+			data[5] = item.handler.itemName
+			data[6] = item.Middleware
 			table.Append(data)
 		}
 		table.Render()
@@ -443,33 +440,46 @@ func (s *Server) GetRouterArray() []RouterItem {
 }
 
 // Run starts server listening in blocking way.
+// It's commonly used for single server situation.
 func (s *Server) Run() {
 	if err := s.Start(); err != nil {
-		glog.Fatal(err)
+		s.Logger().Fatal(err)
 	}
-
 	// Blocking using channel.
 	<-s.closeChan
-
-	glog.Printf("[ghttp] %d: all servers shutdown", gproc.Pid())
+	// Remove plugins.
+	if len(s.plugins) > 0 {
+		for _, p := range s.plugins {
+			intlog.Printf(`remove plugin: %s`, p.Name())
+			p.Remove()
+		}
+	}
+	s.Logger().Printf("[ghttp] %d: all servers shutdown", gproc.Pid())
 }
 
 // Wait blocks to wait for all servers done.
 // It's commonly used in multiple servers situation.
 func Wait() {
 	<-allDoneChan
-
+	// Remove plugins.
+	serverMapping.Iterator(func(k string, v interface{}) bool {
+		s := v.(*Server)
+		if len(s.plugins) > 0 {
+			for _, p := range s.plugins {
+				intlog.Printf(`remove plugin: %s`, p.Name())
+				p.Remove()
+			}
+		}
+		return true
+	})
 	glog.Printf("[ghttp] %d: all servers shutdown", gproc.Pid())
 }
 
-// 开启底层Web Server执行
+// startServer starts the underlying server listening.
 func (s *Server) startServer(fdMap listenerFdMap) {
 	var httpsEnabled bool
-	// 判断是否启用HTTPS
+	// HTTPS
 	if s.config.TLSConfig != nil || (s.config.HTTPSCertPath != "" && s.config.HTTPSKeyPath != "") {
-		// ================
-		// HTTPS
-		// ================
 		if len(s.config.HTTPSAddr) == 0 {
 			if len(s.config.Address) > 0 {
 				s.config.HTTPSAddr = s.config.Address
@@ -494,7 +504,8 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			array := strings.Split(v, "#")
 			if len(array) > 1 {
 				itemFunc = array[0]
-				// windows系统不支持文件描述符传递socket通信平滑交接，因此只能完整重启
+				// The windows OS does not support socket file descriptor passing
+				// from parent process.
 				if runtime.GOOS != "windows" {
 					fd = gconv.Int(array[1])
 				}
@@ -507,10 +518,7 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			s.servers[len(s.servers)-1].isHttps = true
 		}
 	}
-	// ================
 	// HTTP
-	// ================
-	// 当HTTPS服务未启用时，默认HTTP地址才会生效
 	if !httpsEnabled && len(s.config.Address) == 0 {
 		s.config.Address = gDEFAULT_HTTP_ADDR
 	}
@@ -529,7 +537,8 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 		array := strings.Split(v, "#")
 		if len(array) > 1 {
 			itemFunc = array[0]
-			// windows系统不支持文件描述符传递socket通信平滑交接，因此只能完整重启
+			// The windows OS does not support socket file descriptor passing
+			// from parent process.
 			if runtime.GOOS != "windows" {
 				fd = gconv.Int(array[1])
 			}
@@ -540,7 +549,7 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			s.servers = append(s.servers, s.newGracefulServer(itemFunc))
 		}
 	}
-	// 开始执行异步监听
+	// Start listening asynchronizedly.
 	serverRunning.Add(1)
 	for _, v := range s.servers {
 		go func(server *gracefulServer) {
@@ -551,14 +560,13 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 			} else {
 				err = server.ListenAndServe()
 			}
-			// 如果非关闭错误，那么提示报错，否则认为是正常的服务关闭操作
+			// The process exits if the server is closed with none closing error.
 			if err != nil && !strings.EqualFold(http.ErrServerClosed.Error(), err.Error()) {
-				glog.Fatal(err)
+				s.Logger().Fatal(err)
 			}
-			// 如果所有异步的http.Server都已经停止，那么WebServer就可以退出了
+			// If all the underlying servers shutdown, the process exits.
 			if s.serverCount.Add(-1) < 1 {
 				s.closeChan <- struct{}{}
-				// 如果所有WebServer都退出，那么退出Wait等待
 				if serverRunning.Add(-1) < 1 {
 					serverMapping.Remove(s.name)
 					allDoneChan <- struct{}{}
@@ -568,13 +576,12 @@ func (s *Server) startServer(fdMap listenerFdMap) {
 	}
 }
 
-// 获取当前服务器的状态
+// Status retrieves and returns the server status.
 func (s *Server) Status() int {
-	// 当全局运行的Web Server数量为0时表示所有Server都是停止状态
 	if serverRunning.Val() == 0 {
 		return SERVER_STATUS_STOPPED
 	}
-	// 只要有一个Server处于运行状态，那么都表示运行状态
+	// If any underlying server is running, the server status is running.
 	for _, v := range s.servers {
 		if v.status == SERVER_STATUS_RUNNING {
 			return SERVER_STATUS_RUNNING
@@ -583,28 +590,39 @@ func (s *Server) Status() int {
 	return SERVER_STATUS_STOPPED
 }
 
-// 获取当前监听的文件描述符信息，构造成map返回
+// getListenerFdMap retrieves and returns the socket file descriptors.
+// The key of the returned map is "http" and "https".
 func (s *Server) getListenerFdMap() map[string]string {
 	m := map[string]string{
 		"https": "",
 		"http":  "",
 	}
-	// s.servers是从HTTPS到HTTP优先级遍历，解析的时候也应当按照这个顺序读取fd
 	for _, v := range s.servers {
-		str := v.itemFunc + "#" + gconv.String(v.Fd()) + ","
+		str := v.address + "#" + gconv.String(v.Fd()) + ","
 		if v.isHttps {
+			if len(m["https"]) > 0 {
+				m["https"] += ","
+			}
 			m["https"] += str
 		} else {
+			if len(m["http"]) > 0 {
+				m["http"] += ","
+			}
 			m["http"] += str
 		}
 	}
-	// 去掉末尾的","号
-	if len(m["https"]) > 0 {
-		m["https"] = m["https"][0 : len(m["https"])-1]
-	}
-	if len(m["http"]) > 0 {
-		m["http"] = m["http"][0 : len(m["http"])-1]
-	}
-
 	return m
+}
+
+// IsExitError checks if given error is an exit error of server.
+// This is used in old version of server for custom error handler.
+// Deprecated.
+func IsExitError(err interface{}) bool {
+	errStr := gconv.String(err)
+	if strings.EqualFold(errStr, gEXCEPTION_EXIT) ||
+		strings.EqualFold(errStr, gEXCEPTION_EXIT_ALL) ||
+		strings.EqualFold(errStr, gEXCEPTION_EXIT_HOOK) {
+		return true
+	}
+	return false
 }
