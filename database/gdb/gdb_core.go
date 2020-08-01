@@ -11,18 +11,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/gogf/gf/internal/utils"
 	"reflect"
 	"strings"
+
+	"github.com/gogf/gf/internal/utils"
 
 	"github.com/gogf/gf/container/gvar"
 	"github.com/gogf/gf/os/gtime"
 	"github.com/gogf/gf/text/gregex"
 	"github.com/gogf/gf/util/gconv"
-)
-
-const (
-	gPATH_FILTER_KEY = "/database/gdb/gdb"
 )
 
 // Master creates and returns a connection from master node if master-slave configured.
@@ -63,6 +60,7 @@ func (c *Core) DoQuery(link Link, sql string, args ...interface{}) (rows *sql.Ro
 			Error:  err,
 			Start:  mTime1,
 			End:    mTime2,
+			Group:  c.DB.GetGroup(),
 		}
 		c.writeSqlToLogger(s)
 	} else {
@@ -106,6 +104,7 @@ func (c *Core) DoExec(link Link, sql string, args ...interface{}) (result sql.Re
 			Error:  err,
 			Start:  mTime1,
 			End:    mTime2,
+			Group:  c.DB.GetGroup(),
 		}
 		c.writeSqlToLogger(s)
 	} else {
@@ -496,15 +495,15 @@ func (c *Core) DoBatchInsert(link Link, table string, list interface{}, option i
 		params  []interface{}
 		listMap List
 	)
-	switch v := list.(type) {
+	switch value := list.(type) {
 	case Result:
-		listMap = v.List()
+		listMap = value.List()
 	case Record:
-		listMap = List{v.Map()}
+		listMap = List{value.Map()}
 	case List:
-		listMap = v
+		listMap = value
 	case Map:
-		listMap = List{v}
+		listMap = List{value}
 	default:
 		var (
 			rv   = reflect.ValueOf(list)
@@ -521,8 +520,21 @@ func (c *Core) DoBatchInsert(link Link, table string, list interface{}, option i
 			for i := 0; i < rv.Len(); i++ {
 				listMap[i] = DataToMapDeep(rv.Index(i).Interface())
 			}
-		case reflect.Map, reflect.Struct:
-			listMap = List{DataToMapDeep(v)}
+		case reflect.Map:
+			listMap = List{DataToMapDeep(value)}
+		case reflect.Struct:
+			if v, ok := value.(apiInterfaces); ok {
+				var (
+					array = v.Interfaces()
+					list  = make(List, len(array))
+				)
+				for i := 0; i < len(array); i++ {
+					list[i] = DataToMapDeep(array[i])
+				}
+				listMap = list
+			} else {
+				listMap = List{DataToMapDeep(value)}
+			}
 		default:
 			return result, errors.New(fmt.Sprint("unsupported list type:", kind))
 		}
@@ -728,7 +740,7 @@ func (c *Core) rowsToResult(rows *sql.Rows) (Result, error) {
 		columnNames[k] = v.Name()
 	}
 	var (
-		values   = make([]sql.RawBytes, len(columnNames))
+		values   = make([]interface{}, len(columnNames))
 		records  = make(Result, 0)
 		scanArgs = make([]interface{}, len(values))
 	)
@@ -739,19 +751,12 @@ func (c *Core) rowsToResult(rows *sql.Rows) (Result, error) {
 		if err := rows.Scan(scanArgs...); err != nil {
 			return records, err
 		}
-		// Creates a new row object.
 		row := make(Record)
-		// Note that the internal looping variable <value> is type of []byte,
-		// which points to the same memory address. So it should do a copy.
 		for i, value := range values {
 			if value == nil {
 				row[columnNames[i]] = gvar.New(nil)
 			} else {
-				// As sql.RawBytes is type of slice,
-				// it should do a copy of it.
-				v := make([]byte, len(value))
-				copy(v, value)
-				row[columnNames[i]] = gvar.New(c.DB.convertValue(v, columnTypes[i]))
+				row[columnNames[i]] = gvar.New(c.DB.convertValue(value, columnTypes[i]))
 			}
 		}
 		records = append(records, row)
@@ -774,11 +779,25 @@ func (c *Core) MarshalJSON() ([]byte, error) {
 // writeSqlToLogger outputs the sql object to logger.
 // It is enabled when configuration "debug" is true.
 func (c *Core) writeSqlToLogger(v *Sql) {
-	s := fmt.Sprintf("[%3d ms] %s", v.End-v.Start, v.Format)
+	s := fmt.Sprintf("[%3d ms] [%s] %s", v.End-v.Start, v.Group, v.Format)
 	if v.Error != nil {
 		s += "\nError: " + v.Error.Error()
-		c.logger.StackWithFilter(gPATH_FILTER_KEY).Error(s)
+		c.logger.Error(s)
 	} else {
-		c.logger.StackWithFilter(gPATH_FILTER_KEY).Debug(s)
+		c.logger.Debug(s)
 	}
+}
+
+// HasTable determine whether the table name exists in the database.
+func (c *Core) HasTable(name string) (bool, error) {
+	tableList, err := c.DB.Tables()
+	if err != nil {
+		return false, err
+	}
+	for _, table := range tableList {
+		if table == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }

@@ -19,29 +19,35 @@ import (
 
 const (
 	gFRAME_CORE_COMPONENT_NAME_DATABASE = "gf.core.component.database"
+	gDATABASE_NODE_NAME                 = "database"
 )
 
 // Database returns an instance of database ORM object
 // with specified configuration group name.
 func Database(name ...string) gdb.DB {
-	config := Config()
 	group := gdb.DEFAULT_GROUP_NAME
 	if len(name) > 0 && name[0] != "" {
 		group = name[0]
 	}
 	instanceKey := fmt.Sprintf("%s.%s", gFRAME_CORE_COMPONENT_NAME_DATABASE, group)
 	db := instances.GetOrSetFuncLock(instanceKey, func() interface{} {
-		// Configuration already exists.
-		if gdb.GetConfig(group) != nil {
+		// If configuration file does not exist but the gdb configurations are already set.
+		if !Config().Available() && gdb.GetConfig(group) != nil {
 			db, err := gdb.Instance(group)
 			if err != nil {
 				panic(err)
 			}
 			return db
 		}
-		m := config.GetMap("database")
-		if m == nil {
-			panic(`database init failed: "database" node not found, is config file or configuration missing?`)
+		// Check the configuration file.
+		var m map[string]interface{}
+		// It firstly searches the configuration of the instance name.
+		nodeKey, _ := gutil.MapPossibleItemByKey(Config().GetMap("."), gDATABASE_NODE_NAME)
+		if nodeKey == "" {
+			nodeKey = gDATABASE_NODE_NAME
+		}
+		if m = Config().GetMap(nodeKey); len(m) == 0 {
+			panic(fmt.Sprintf(`database init failed: "%s" node not found, is config file or configuration missing?`, gDATABASE_NODE_NAME))
 		}
 		// Parse <m> as map-slice and adds it to gdb's global configurations.
 		for group, groupConfig := range m {
@@ -78,11 +84,12 @@ func Database(name ...string) gdb.DB {
 
 		if db, err := gdb.New(name...); err == nil {
 			// Initialize logger for ORM.
-			m := config.GetMap(fmt.Sprintf("database.%s", gLOGGER_NODE_NAME))
-			if m == nil {
-				m = config.GetMap(gLOGGER_NODE_NAME)
+			var m map[string]interface{}
+			m = Config().GetMap(fmt.Sprintf("%s.%s", nodeKey, gLOGGER_NODE_NAME))
+			if len(m) == 0 {
+				m = Config().GetMap(nodeKey)
 			}
-			if m != nil {
+			if len(m) > 0 {
 				if err := db.GetLogger().SetConfigWithMap(m); err != nil {
 					panic(err)
 				}

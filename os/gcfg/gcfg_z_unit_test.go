@@ -9,10 +9,11 @@
 package gcfg_test
 
 import (
-	"github.com/gogf/gf/debug/gdebug"
-	"github.com/gogf/gf/os/gtime"
 	"os"
 	"testing"
+
+	"github.com/gogf/gf/debug/gdebug"
+	"github.com/gogf/gf/os/gtime"
 
 	"github.com/gogf/gf/encoding/gjson"
 	"github.com/gogf/gf/frame/g"
@@ -82,7 +83,6 @@ array = [1,2,3]
 			"cache": "127.0.0.1:6379,1",
 		})
 		t.AssertEQ(c.FilePath(), gfile.Pwd()+gfile.Separator+path)
-
 	})
 }
 
@@ -359,6 +359,23 @@ func TestCfg_FilePath(t *testing.T) {
 	})
 }
 
+func TestCfg_et(t *testing.T) {
+	config := `log-path = "logs"`
+	gtest.C(t, func(t *gtest.T) {
+		path := gcfg.DEFAULT_CONFIG_FILE
+		err := gfile.PutContents(path, config)
+		t.Assert(err, nil)
+		defer gfile.Remove(path)
+
+		c := gcfg.New()
+		t.Assert(c.Get("log-path"), "logs")
+
+		err = c.Set("log-path", "custom-logs")
+		t.Assert(err, nil)
+		t.Assert(c.Get("log-path"), "custom-logs")
+	})
+}
+
 func TestCfg_Get(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		var err error
@@ -457,5 +474,15 @@ func TestCfg_Config(t *testing.T) {
 		gcfg.RemoveContent("config.yml")
 		gcfg.ClearContent()
 		t.Assert(gcfg.GetContent("name"), "")
+	})
+}
+
+func TestCfg_With_UTF8_BOM(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		cfg := g.Cfg("test-cfg-with-utf8-bom")
+		t.Assert(cfg.SetPath("testdata"), nil)
+		cfg.SetFileName("cfg-with-utf8-bom.toml")
+		t.Assert(cfg.GetInt("test.testInt"), 1)
+		t.Assert(cfg.GetString("test.testStr"), "test")
 	})
 }

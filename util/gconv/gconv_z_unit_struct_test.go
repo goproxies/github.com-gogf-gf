@@ -491,6 +491,79 @@ func Test_StructDeep3(t *testing.T) {
 	})
 }
 
+// https://github.com/gogf/gf/issues/775
+func Test_StructDeep4(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		type Sub2 struct {
+			SubName string
+		}
+		type sub1 struct {
+			Sub2
+			Name string
+		}
+		type Test struct {
+			Sub sub1 `json:"sub"`
+		}
+
+		data := `{
+    "sub": {
+		"map":{"k":"v"},
+        "Name": "name",
+        "SubName": "subname"
+    }}`
+
+		expect := Test{
+			Sub: sub1{
+				Name: "name",
+				Sub2: Sub2{
+					SubName: "subname",
+				},
+			},
+		}
+		tx := new(Test)
+		if err := gconv.StructDeep(data, &tx); err != nil {
+			panic(err)
+		}
+		t.Assert(tx, expect)
+	})
+}
+
+func Test_StructDeep5(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		type Base struct {
+			Pass1 string `params:"password1"`
+			Pass2 string `params:"password2"`
+		}
+		type UserWithBase1 struct {
+			Id   int
+			Name string
+			Base
+		}
+		type UserWithBase2 struct {
+			Id   int
+			Name string
+			Pass Base
+		}
+
+		data := g.Map{
+			"id":        1,
+			"name":      "john",
+			"password1": "123",
+			"password2": "456",
+		}
+		var err error
+		user1 := new(UserWithBase1)
+		user2 := new(UserWithBase2)
+		err = gconv.StructDeep(data, user1)
+		t.Assert(err, nil)
+		t.Assert(user1, &UserWithBase1{1, "john", Base{"123", "456"}})
+
+		err = gconv.StructDeep(data, user2)
+		t.Assert(err, nil)
+		t.Assert(user2, &UserWithBase2{1, "john", Base{"123", "456"}})
+	})
+}
+
 func Test_Struct_Time(t *testing.T) {
 	gtest.C(t, func(t *gtest.T) {
 		type User struct {
@@ -835,5 +908,76 @@ func Test_Struct_UnmarshalValue(t *testing.T) {
 		st := &MyTimeSt{}
 		err := gconv.Struct(g.Map{"ServiceDate": nil}, st)
 		t.AssertNE(err, nil)
+	})
+}
+
+type T struct {
+	Name string
+}
+
+func (t *T) Test() string {
+	return t.Name
+}
+
+type TestInterface interface {
+	Test() string
+}
+
+type TestStruct struct {
+	TestInterface
+}
+
+func Test_Struct_WithInterfaceAttr(t *testing.T) {
+	// Implemented interface attribute.
+	gtest.C(t, func(t *gtest.T) {
+		v1 := TestStruct{
+			TestInterface: &T{"john"},
+		}
+		v2 := g.Map{}
+		err := gconv.StructDeep(v2, &v1)
+		t.Assert(err, nil)
+		t.Assert(v1.Test(), "john")
+	})
+	// Implemented interface attribute.
+	gtest.C(t, func(t *gtest.T) {
+		v1 := TestStruct{
+			TestInterface: &T{"john"},
+		}
+		v2 := g.Map{
+			"name": "test",
+		}
+		err := gconv.StructDeep(v2, &v1)
+		t.Assert(err, nil)
+		t.Assert(v1.Test(), "test")
+	})
+	// No implemented interface attribute.
+	gtest.C(t, func(t *gtest.T) {
+		v1 := TestStruct{}
+		v2 := g.Map{
+			"name": "test",
+		}
+		err := gconv.StructDeep(v2, &v1)
+		t.Assert(err, nil)
+		t.Assert(v1.TestInterface, nil)
+	})
+}
+
+func Test_Struct_To_Struct(t *testing.T) {
+	var TestA struct {
+		Id   int       `p:"id"`
+		Date time.Time `p:"date"`
+	}
+
+	var TestB struct {
+		Id   int       `p:"id"`
+		Date time.Time `p:"date"`
+	}
+	TestB.Id = 666
+	TestB.Date = time.Now()
+
+	gtest.C(t, func(t *gtest.T) {
+		t.Assert(gconv.Struct(TestB, &TestA), nil)
+		t.Assert(TestA.Id, TestB.Id)
+		t.Assert(TestA.Date, TestB.Date)
 	})
 }

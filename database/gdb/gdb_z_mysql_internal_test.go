@@ -8,6 +8,7 @@ package gdb
 
 import (
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"github.com/gogf/gf/os/gcmd"
 	"github.com/gogf/gf/os/gtime"
 	"github.com/gogf/gf/test/gtest"
@@ -87,7 +88,7 @@ func Test_Func_FormatSqlWithArgs(t *testing.T) {
 	// oracle
 	gtest.C(t, func(t *gtest.T) {
 		var s string
-		s = FormatSqlWithArgs("select * from table where id>=:1 and sex=:2", []interface{}{100, 1})
+		s = FormatSqlWithArgs("select * from table where id>=:v1 and sex=:v2", []interface{}{100, 1})
 		t.Assert(s, "select * from table where id>=100 and sex=1")
 	})
 }
@@ -287,5 +288,18 @@ CREATE TABLE %s (
 			model.getConditionForSoftDeleting(),
 			"`t1`.`delete_at` IS NULL AND `t2`.`deleteat` IS NULL AND `t3`.`deleteat` IS NULL",
 		)
+	})
+}
+
+// Fix issue: https://github.com/gogf/gf/issues/819
+func Test_Func_DataToMapDeep(t *testing.T) {
+	type Test struct {
+		ResetPasswordTokenAt mysql.NullTime `orm:"reset_password_token_at"`
+	}
+	gtest.C(t, func(t *gtest.T) {
+		m := DataToMapDeep(new(Test))
+		t.Assert(len(m), 1)
+		t.AssertNE(m["reset_password_token_at"], nil)
+		t.Assert(m["reset_password_token_at"], new(mysql.NullTime))
 	})
 }

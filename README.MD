@@ -31,6 +31,11 @@ require github.com/gogf/gf latest
 golang version >= 1.11
 ```
 
+# Architecture
+<div align=center>
+<img src="https://goframe.org/images/arch.png?v=12"/>
+</div>
+
 # Packages
 1. **Primary Package**
 
@@ -39,11 +44,6 @@ golang version >= 1.11
 1. **Community Package**
 
     The community packages are contributed and maintained by community members, which are hosted in `gogf` organization. Some of the community packages are separated from the `gf` repository, which are not of common usage or are with heavy dependencies. 
-
-# Architecture
-<div align=center>
-<img src="https://goframe.org/images/arch.png?v=12"/>
-</div>
 
 # Performance
 
@@ -115,9 +115,18 @@ The concurrency starts from `100` to `10000`.
 
 `GF` is licensed under the [MIT License](LICENSE), 100% free and open-source, forever.
 
-# Known Users
+# Part Of Users
 
-Logos are not authorized to be shown due to trademark copyrights.
+- [Tencent](https://www.tencent.com/)
+- [ZTE](https://www.zte.com.cn/china/)
+- [Ant Financial Services](https://www.antfin.com/)
+- [Medlinker](https://www.medlinker.com/)
+- [Yesk](http://www.yesky.com)
+- [KuCoin](https://www.kucoin.io/)
+- [Leyoujia Holding Group](https://www.leyoujia.com/)
+
+
+> We list part of the users here, if your company or products are using `GoFrame`, please let us know [here](https://github.com/gogf/gf/issues/168).
 
 
 # Contributors

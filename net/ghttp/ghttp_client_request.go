@@ -135,7 +135,7 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 				if !gfile.Exists(path) {
 					return nil, errors.New(fmt.Sprintf(`"%s" does not exist`, path))
 				}
-				if file, err := writer.CreateFormFile(array[0], path); err == nil {
+				if file, err := writer.CreateFormFile(array[0], gfile.Basename(path)); err == nil {
 					if f, err := os.Open(path); err == nil {
 						if _, err = io.Copy(file, f); err != nil {
 							f.Close()
@@ -227,6 +227,10 @@ func (c *Client) DoRequest(method, url string, data ...interface{}) (resp *Clien
 	req.Body = utils.NewReadCloser(reqBodyContent, false)
 	for {
 		if resp.Response, err = c.Do(req); err != nil {
+			// The response might not be nil when err != nil.
+			if resp.Response != nil {
+				resp.Response.Body.Close()
+			}
 			if c.retryCount > 0 {
 				c.retryCount--
 				time.Sleep(c.retryInterval)
