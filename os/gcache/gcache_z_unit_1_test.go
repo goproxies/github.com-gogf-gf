@@ -9,6 +9,7 @@
 package gcache_test
 
 import (
+	"github.com/gogf/gf/util/guid"
 	"testing"
 	"time"
 
@@ -70,6 +71,53 @@ func TestCache_Set_Expire(t *testing.T) {
 		t.Assert(cache.Get(1), 11)
 		time.Sleep(200 * time.Millisecond)
 		t.Assert(cache.Get(1), nil)
+	})
+}
+
+func TestCache_Update_GetExpire(t *testing.T) {
+	// gcache
+	gtest.C(t, func(t *gtest.T) {
+		key := guid.S()
+		gcache.Set(key, 11, 3*time.Second)
+		oldExpire1 := gcache.GetExpire(key)
+		gcache.Update(key, 12)
+		oldExpire2 := gcache.GetExpire(key)
+		t.Assert(gcache.GetVar(key), 12)
+		t.Assert(oldExpire1, oldExpire2)
+	})
+	// gcache.Cache
+	gtest.C(t, func(t *gtest.T) {
+		cache := gcache.New()
+		cache.Set(1, 11, 3*time.Second)
+		oldExpire1 := cache.GetExpire(1)
+		cache.Update(1, 12)
+		oldExpire2 := cache.GetExpire(1)
+		t.Assert(cache.GetVar(1), 12)
+		t.Assert(oldExpire1, oldExpire2)
+	})
+}
+
+func TestCache_UpdateExpire(t *testing.T) {
+	// gcache
+	gtest.C(t, func(t *gtest.T) {
+		key := guid.S()
+		gcache.Set(key, 11, 3*time.Second)
+		defer gcache.Remove(key)
+		oldExpire := gcache.GetExpire(key)
+		newExpire := 10 * time.Second
+		gcache.UpdateExpire(key, newExpire)
+		t.AssertNE(gcache.GetExpire(key), oldExpire)
+		t.Assert(gcache.GetExpire(key), newExpire)
+	})
+	// gcache.Cache
+	gtest.C(t, func(t *gtest.T) {
+		cache := gcache.New()
+		cache.Set(1, 11, 3*time.Second)
+		oldExpire := cache.GetExpire(1)
+		newExpire := 10 * time.Second
+		cache.UpdateExpire(1, newExpire)
+		t.AssertNE(cache.GetExpire(1), oldExpire)
+		t.Assert(cache.GetExpire(1), newExpire)
 	})
 }
 

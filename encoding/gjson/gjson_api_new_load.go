@@ -189,18 +189,26 @@ func LoadContent(data interface{}, safe ...bool) (*Json, error) {
 	if len(content) == 0 {
 		return New(nil, safe...), nil
 	}
+	return LoadContentType(checkDataType(content), content, safe...)
+}
 
+// LoadContentType creates a Json object from given type and content,
+// supporting data content type as follows:
+// JSON, XML, INI, YAML and TOML.
+func LoadContentType(dataType string, data interface{}, safe ...bool) (*Json, error) {
+	content := gconv.Bytes(data)
+	if len(content) == 0 {
+		return New(nil, safe...), nil
+	}
 	//ignore UTF8-BOM
 	if content[0] == 0xEF && content[1] == 0xBB && content[2] == 0xBF {
 		content = content[3:]
 	}
-
-	return doLoadContent(checkDataType(content), content, safe...)
-
+	return doLoadContent(dataType, content, safe...)
 }
 
 // checkDataType automatically checks and returns the data type for <content>.
-// Note that it uses regular expression for loose checking, you can use LoadXXX
+// Note that it uses regular expression for loose checking, you can use LoadXXX/LoadContentType
 // functions to load the content for certain content type.
 func checkDataType(content []byte) string {
 	if json.Valid(content) {
@@ -210,10 +218,12 @@ func checkDataType(content []byte) string {
 	} else if (gregex.IsMatch(`^[\n\r]*[\w\-\s\t]+\s*:\s*".+"`, content) || gregex.IsMatch(`^[\n\r]*[\w\-\s\t]+\s*:\s*\w+`, content)) ||
 		(gregex.IsMatch(`[\n\r]+[\w\-\s\t]+\s*:\s*".+"`, content) || gregex.IsMatch(`[\n\r]+[\w\-\s\t]+\s*:\s*\w+`, content)) {
 		return "yml"
-	} else if !gregex.IsMatch(`^[\s\t\n\r]*;.+`, content) && !gregex.IsMatch(`[\s\t\n\r]+;.+`, content) &&
+	} else if !gregex.IsMatch(`^[\s\t\n\r]*;.+`, content) &&
+		!gregex.IsMatch(`[\s\t\n\r]+;.+`, content) &&
+		!gregex.IsMatch(`[\n\r]+[\s\t\w\-]+\.[\s\t\w\-]+\s*=\s*.+`, content) &&
 		(gregex.IsMatch(`[\n\r]*[\s\t\w\-\."]+\s*=\s*".+"`, content) || gregex.IsMatch(`[\n\r]*[\s\t\w\-\."]+\s*=\s*\w+`, content)) {
 		return "toml"
-	} else if gregex.IsMatch(`\[[\w]+\]`, content) && !gregex.IsMatch(`^[\s\t\n\r]*#.+`, content) && !gregex.IsMatch(`[\s\t\n\r]+#.+`, content) &&
+	} else if gregex.IsMatch(`\[[\w\.]+\]`, content) &&
 		(gregex.IsMatch(`[\n\r]*[\s\t\w\-\."]+\s*=\s*".+"`, content) || gregex.IsMatch(`[\n\r]*[\s\t\w\-\."]+\s*=\s*\w+`, content)) {
 		// Must contain "[xxx]" section.
 		return "ini"
