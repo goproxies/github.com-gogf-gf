@@ -104,7 +104,6 @@ func DataToMapDeep(value interface{}) map[string]interface{} {
 	if v, ok := value.(apiMapStrAny); ok {
 		return v.MapStrAny()
 	}
-
 	var (
 		rvValue reflect.Value
 		rvField reflect.Value
@@ -317,8 +316,10 @@ func GetPrimaryKeyCondition(primary string, where ...interface{}) (newWhereCondi
 		return where
 	}
 	if len(where) == 1 {
-		rv := reflect.ValueOf(where[0])
-		kind := rv.Kind()
+		var (
+			rv   = reflect.ValueOf(where[0])
+			kind = rv.Kind()
+		)
 		if kind == reflect.Ptr {
 			rv = rv.Elem()
 			kind = rv.Kind()
