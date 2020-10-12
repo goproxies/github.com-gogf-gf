@@ -310,6 +310,11 @@ func (c *Core) Transaction(f func(tx *TX) error) (err error) {
 		return err
 	}
 	defer func() {
+		if err == nil {
+			if e := recover(); e != nil {
+				err = fmt.Errorf("%v", e)
+			}
+		}
 		if err != nil {
 			if e := tx.Rollback(); e != nil {
 				err = e
@@ -426,10 +431,10 @@ func (c *Core) DoInsert(link Link, table string, data interface{}, option int, b
 		if _, ok := data.(apiInterfaces); ok {
 			return c.DB.DoBatchInsert(link, table, data, option, batch...)
 		} else {
-			dataMap = DataToMapDeep(data)
+			dataMap = ConvertDataForTableRecord(data)
 		}
 	case reflect.Map:
-		dataMap = DataToMapDeep(data)
+		dataMap = ConvertDataForTableRecord(data)
 	default:
 		return result, errors.New(fmt.Sprint("unsupported data type:", reflectKind))
 	}
@@ -521,10 +526,10 @@ func (c *Core) BatchSave(table string, list interface{}, batch ...int) (sql.Resu
 func (c *Core) DoBatchInsert(link Link, table string, list interface{}, option int, batch ...int) (result sql.Result, err error) {
 	table = c.DB.QuotePrefixTableName(table)
 	var (
-		keys    []string
-		values  []string
-		params  []interface{}
-		listMap List
+		keys    []string      // Field names.
+		values  []string      // Value holder string array, like: (?,?,?)
+		params  []interface{} // Values that will be committed to underlying database driver.
+		listMap List          // The data list that passed from caller.
 	)
 	switch value := list.(type) {
 	case Result:
@@ -549,10 +554,10 @@ func (c *Core) DoBatchInsert(link Link, table string, list interface{}, option i
 		case reflect.Slice, reflect.Array:
 			listMap = make(List, rv.Len())
 			for i := 0; i < rv.Len(); i++ {
-				listMap[i] = DataToMapDeep(rv.Index(i).Interface())
+				listMap[i] = ConvertDataForTableRecord(rv.Index(i).Interface())
 			}
 		case reflect.Map:
-			listMap = List{DataToMapDeep(value)}
+			listMap = List{ConvertDataForTableRecord(value)}
 		case reflect.Struct:
 			if v, ok := value.(apiInterfaces); ok {
 				var (
@@ -560,11 +565,11 @@ func (c *Core) DoBatchInsert(link Link, table string, list interface{}, option i
 					list  = make(List, len(array))
 				)
 				for i := 0; i < len(array); i++ {
-					list[i] = DataToMapDeep(array[i])
+					list[i] = ConvertDataForTableRecord(array[i])
 				}
 				listMap = list
 			} else {
-				listMap = List{DataToMapDeep(value)}
+				listMap = List{ConvertDataForTableRecord(value)}
 			}
 		default:
 			return result, errors.New(fmt.Sprint("unsupported list type:", kind))
@@ -690,7 +695,7 @@ func (c *Core) DoUpdate(link Link, table string, data interface{}, condition str
 	case reflect.Map, reflect.Struct:
 		var (
 			fields  []string
-			dataMap = DataToMapDeep(data)
+			dataMap = ConvertDataForTableRecord(data)
 		)
 		for k, v := range dataMap {
 			fields = append(fields, c.DB.QuoteWord(k)+"=?")
